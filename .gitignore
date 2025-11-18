@@ -1,30 +1,17 @@
-## Python cache / bytecode
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
-
-## Virtual environments
-.venv/
-venv/
+*.pyd
+.Python
 env/
-
-## OS / editor noise
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
 .DS_Store
-Thumbs.db
-.idea/
-.vscode/
-
-## Logs and runtime artifacts
-*.log
-
-## Generated data
-recipients.csv
-leads_greece_2025.sqlite
-
-## Go build artifacts
-scraper
-
-## Selenium / browser artifacts
-selenium-screenshots/
-
-
+.coverage
+htmlcov/
+.pytest_cache/
+recipients.csv.tmp
+scraper.lock
+scraper_log.txt

@@ -1,131 +1,105 @@
-from flask import Flask, render_template_string, send_file, jsonify
+from flask import Flask, render_template, send_file, request, redirect
 import pandas as pd
-import os
-import threading
+from pathlib import Path
 import subprocess
-import sys
+import os
+import json
+import signal
+import time
 
 app = Flask(__name__)
-CSV_FILE = 'recipients.csv'
-LOCK_FILE = 'scraper.lock'
 
-# HTML Template with embedded CSS for modern UI
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scraped Data Results</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
-    <style>
-        body { background-color: #f8f9fa; }
-        .container { margin-top: 40px; max-width: 90%; }
-        .card { border: none; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .card-header { background: white; border-bottom: 1px solid #eee; padding: 20px; border-radius: 12px 12px 0 0 !important; }
-        .btn-download { margin-right: 10px; }
-        .status-badge { font-size: 0.9em; }
-        .dataTables_wrapper { padding: 20px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="card mb-4">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <div>
-                    <h2 class="mb-0">📧 Email Scraper Results</h2>
-                    <p class="text-muted mb-0">View and manage your scraped contacts</p>
-                </div>
-                <div>
-                    {% if running %}
-                        <span class="badge bg-warning text-dark status-badge">Running...</span>
-                    {% else %}
-                        <span class="badge bg-success status-badge">Completed</span>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="card-body">
-                {% if error %}
-                    <div class="alert alert-warning">{{ error }}</div>
-                {% endif %}
+# Constants
+BASE_DIR = Path(__file__).parent
+CSV_FILE = BASE_DIR / 'recipients.csv'
+CONFIG_FILE = BASE_DIR / 'config.json'
+LOCK_FILE = BASE_DIR / 'scraper.lock'
 
-                <div class="mb-3">
-                    <a href="/download/csv" class="btn btn-primary btn-download">Download CSV</a>
-                    <a href="/download/json" class="btn btn-secondary btn-download">Download JSON</a>
-                    <a href="/download/excel" class="btn btn-success btn-download">Download Excel</a>
-                </div>
-
-                {% if data %}
-                    <div class="table-responsive">
-                        {{ data | safe }}
-                    </div>
-                {% else %}
-                    <div class="text-center py-5">
-                        <div class="spinner-border text-primary" role="status"></div>
-                        <p class="mt-2">Waiting for data... (Refresh page)</p>
-                    </div>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-
-    <script src="https://code.jquery.com/jquery-3.7.0.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
-    <script>
-        $(document).ready(function() {
-            $('table').addClass('table table-hover table-striped');
-            $('table').DataTable({
-                "order": [[ 0, "asc" ]],
-                "pageLength": 25
-            });
-        });
-        
-        // Auto-refresh if running
-        {% if running %}
-        setTimeout(function(){
-           window.location.reload(1);
-        }, 5000);
-        {% endif %}
-    </script>
-</body>
-</html>
-"""
+def get_config():
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
 
 def is_scraper_running():
     # Simple check if python scraper process is active
     try:
-        # This is a bit rough, but works for single container
         res = subprocess.check_output(["pgrep", "-f", "scraper.py"])
         return bool(res.strip())
     except (subprocess.CalledProcessError, FileNotFoundError):
         return False
 
+def restart_scraper():
+    """Kills existing scraper process and starts a new one."""
+    # 1. Kill existing
+    try:
+        pids = subprocess.check_output(["pgrep", "-f", "scraper.py"]).decode().splitlines()
+        for pid in pids:
+            if pid:
+                os.kill(int(pid), signal.SIGTERM)
+    except Exception:
+        pass # No process found
+    
+    # 2. Start new
+    time.sleep(1)
+    # Inherit stdout/stderr so logs show up in Railway/Docker logs
+    subprocess.Popen(
+        ["python3", str(BASE_DIR / "scraper.py"), "--config", str(CONFIG_FILE)],
+        cwd=str(BASE_DIR)
+    )
+
 @app.route('/')
 def index():
     running = is_scraper_running()
+    config = get_config()
+    success_message = request.args.get('msg')
     
-    if not os.path.exists(CSV_FILE):
-        return render_template_string(HTML_TEMPLATE, data=None, running=running, error="Results file not found yet.")
+    if not CSV_FILE.exists():
+        return render_template('index.html', data=None, running=running, config=config, error="Results file not found yet.", success_message=success_message)
     
     try:
-        # Handle empty or malformed file during writes
-        if os.path.getsize(CSV_FILE) == 0:
-             return render_template_string(HTML_TEMPLATE, data=None, running=running, error="Data file is empty (initializing...)")
+        # Handle empty or malformed file
+        if CSV_FILE.stat().st_size == 0:
+             return render_template('index.html', data=None, running=running, config=config, error="Data file is empty (initializing...)", success_message=success_message)
              
         df = pd.read_csv(CSV_FILE)
         # Convert to HTML table
-        table_html = df.to_html(classes='table', index=False, border=0)
-        return render_template_string(HTML_TEMPLATE, data=table_html, running=running)
+        table_html = df.to_html(classes='table table-hover', index=False, border=0)
+        return render_template('index.html', data=table_html, running=running, config=config, success_message=success_message)
     except pd.errors.EmptyDataError:
-        return render_template_string(HTML_TEMPLATE, data=None, running=running, error="Data file is empty.")
+        return render_template('index.html', data=None, running=running, config=config, error="Data file is empty.", success_message=success_message)
     except Exception as e:
-        return render_template_string(HTML_TEMPLATE, data=None, running=running, error=f"Error reading data: {str(e)}")
+        return render_template('index.html', data=None, running=running, config=config, error=f"Error reading data: {str(e)}", success_message=success_message)
+
+@app.route('/update_config', methods=['POST'])
+def update_config():
+    try:
+        new_config = get_config()
+        
+        # Update fields
+        new_config['search_term'] = request.form.get('search_term', '')
+        locations_str = request.form.get('locations', '')
+        new_config['locations'] = [loc.strip() for loc in locations_str.split(',') if loc.strip()]
+        new_config['max_results_per_query'] = int(request.form.get('max_results', 10))
+        new_config['max_thread_workers'] = int(request.form.get('max_thread_workers', 3))
+        
+        # Save
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(new_config, f, indent=4)
+            
+        # Restart Scraper
+        restart_scraper()
+        
+        return redirect('/?msg=Settings+saved.+Scraper+restarted.')
+    except Exception as e:
+        return redirect(f'/?error=Failed+to+update+config:+{str(e)}')
 
 @app.route('/download/<format>')
 def download(format):
-    if not os.path.exists(CSV_FILE):
+    if not CSV_FILE.exists():
         return "File not found", 404
     
     df = pd.read_csv(CSV_FILE)
@@ -133,11 +107,11 @@ def download(format):
     if format == 'csv':
         return send_file(CSV_FILE, as_attachment=True)
     elif format == 'json':
-        json_file = 'recipients.json'
+        json_file = BASE_DIR / 'recipients.json'
         df.to_json(json_file, orient='records')
         return send_file(json_file, as_attachment=True)
     elif format == 'excel':
-        xlsx_file = 'recipients.xlsx'
+        xlsx_file = BASE_DIR / 'recipients.xlsx'
         df.to_excel(xlsx_file, index=False)
         return send_file(xlsx_file, as_attachment=True)
     

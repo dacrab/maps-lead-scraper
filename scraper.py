@@ -8,6 +8,7 @@ import re
 import threading
 import time
 import os
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set
 from urllib.parse import urlparse
@@ -98,7 +99,8 @@ class Config:
 
     @staticmethod
     def load(path: str) -> "Config":
-        with open(path, "r", encoding="utf-8") as f:
+        config_path = Path(path)
+        with config_path.open("r", encoding="utf-8") as f:
             data = json.load(f)
         scroll_pause_time = float(data.get("scroll_pause_time", data.get("scroll_pause_seconds", 2.0)))
         max_scroll_attempts = int(data.get("max_scroll_attempts", data.get("scroll_passes", 20)))
@@ -126,7 +128,7 @@ class EmailScraper:
         self.config = config
         self.use_threading = config.use_threading
         self.headless = config.headless
-        self.output_filename = config.output_filename
+        self.output_filename = Path(config.output_filename)
         self.phone_min_digits = config.phone_min_digits
         self.max_thread_workers = config.max_thread_workers
         self.lock = threading.Lock()
@@ -139,12 +141,12 @@ class EmailScraper:
         self._load_existing_data()
 
     def _load_existing_data(self) -> None:
-        if not os.path.exists(self.output_filename):
+        if not self.output_filename.exists():
             return
             
         print(f"[*] Loading existing data from {self.output_filename}...")
         try:
-            with open(self.output_filename, "r", encoding="utf-8") as f:
+            with self.output_filename.open("r", encoding="utf-8") as f:
                 reader = csv.reader(f)
                 headers = next(reader, None) # Skip header
                 count = 0
@@ -541,8 +543,6 @@ class EmailScraper:
             writer = csv.writer(f, delimiter=",", quoting=csv.QUOTE_MINIMAL)
             writer.writerow(["Company", "Email", "Phone", "Website"])
             writer.writerows(rows)
-        
-        import os
         os.replace(temp_filename, filename)
         
         print(f"\n[+] {len(rows)} unique business emails saved in: {filename}")
@@ -581,7 +581,6 @@ def main() -> None:
     print("   EMAIL SCRAPER")
     print("   Google Maps Scraping with Browser Automation")
     print("=" * 70)
-    import os
     default_cfg = os.environ.get("SCRAPER_CONFIG", "config.json")
     parser = argparse.ArgumentParser(description="Email Scraper (Google Maps)")
     parser.add_argument("--config", default=default_cfg, help="Path to config JSON file")
