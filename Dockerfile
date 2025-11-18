@@ -23,6 +23,7 @@ COPY scraper.py ./
 COPY config.json ./
 COPY start.sh ./
 COPY app.py ./
+COPY templates ./templates/
 
 RUN chmod +x /app/start.sh && useradd -m -u 1000 appuser && chown -R appuser:appuser /app /ms-playwright
 USER appuser
