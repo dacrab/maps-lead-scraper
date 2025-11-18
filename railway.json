@@ -3,7 +3,7 @@
     "dockerfile": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "python /app/scraper.py --config=/app/config.json && python -m http.server 8080 --directory /app",
+    "startCommand": "/app/start.sh",
     "numReplicas": 1
   }
 }

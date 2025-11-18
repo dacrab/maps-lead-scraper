@@ -117,7 +117,7 @@ def index():
     except Exception as e:
         return render_template_string(HTML_TEMPLATE, data=None, running=running, error=f"Error reading data: {str(e)}")
 
-@app.route('/download/<fmt>')
+@app.route('/download/<format>')
 def download(format):
     if not os.path.exists(CSV_FILE):
         return "File not found", 404
