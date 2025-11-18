@@ -7,16 +7,14 @@ import json
 import signal
 import time
 
-app = Flask(__name__)
-
 # Constants
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(__file__).resolve().parent
 CSV_FILE = BASE_DIR / 'recipients.csv'
 CONFIG_FILE = BASE_DIR / 'config.json'
 LOCK_FILE = BASE_DIR / 'scraper.lock'
 TEMPLATE_DIR = BASE_DIR / 'templates'
 
-app.template_folder = str(TEMPLATE_DIR)
+app = Flask(__name__, template_folder=str(TEMPLATE_DIR))
 
 def get_config():
     if CONFIG_FILE.exists():
