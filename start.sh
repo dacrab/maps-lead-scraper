@@ -1,19 +1,27 @@
 #!/bin/bash
 set -e
 
-# Default Railway port
-PORT="${PORT:-8000}"
+# Railway provides the PORT variable at runtime.
+# If it's not set, we default to 8000 (for local testing).
+SERVER_PORT="${PORT:-8000}"
 
-echo "--- Starting Scraper & Web Dashboard ---"
+echo "=================================================="
+echo "   STARTING EMAIL SCRAPER CONTAINER"
+echo "=================================================="
+echo "[*] Detected PORT: $SERVER_PORT"
 
 # 1. Start the Scraper in the BACKGROUND
-# It will run, generate recipients.csv, and then exit.
-# The web app monitors the CSV file.
 echo "[*] Launching Scraper in background..."
-python3 /app/scraper.py --config /app/config.json &
+# Redirect scraper logs to stdout so they appear in Railway logs
+python3 /app/scraper.py --config /app/config.json > /proc/1/fd/1 2>&1 &
 
-# 2. Start the Web Server (Gunicorn + Flask) in the FOREGROUND
-# This ensures the container stays alive and listens on the correct PORT.
-echo "[*] Starting Web Dashboard on port $PORT..."
-exec gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+# 2. Start the Web Server (Gunicorn) in the FOREGROUND
+# We use 0.0.0.0 to accept external connections
+echo "[*] Starting Web Dashboard on 0.0.0.0:$SERVER_PORT..."
+exec gunicorn app:app \
+    --bind "0.0.0.0:$SERVER_PORT" \
+    --workers 2 \
+    --timeout 120 \
+    --access-logfile - \
+    --error-logfile -
 
