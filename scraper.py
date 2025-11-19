@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import csv
 import json
 import random
 import re
-import threading
-import time
 import os
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set
 from urllib.parse import urlparse
-from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page, Playwright
+from playwright.async_api import async_playwright, Browser, BrowserContext, Page, Playwright
 
 
 EMAIL_REGEX = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
@@ -90,8 +89,7 @@ class Config:
     max_results_per_query: int = 0
     phone_min_digits: int = 10
     headless: bool = True
-    use_threading: bool = False
-    max_thread_workers: int = 3
+    max_concurrent_pages: int = 5
     scroll_pause_time: float = 2.0
     max_scroll_attempts: int = 20
     delay_between_queries_seconds_min: float = 3.0
@@ -111,8 +109,7 @@ class Config:
             max_results_per_query=int(data.get("max_results_per_query", 0)),
             phone_min_digits=int(data.get("phone_min_digits", 10)),
             headless=bool(data.get("headless", True)),
-            use_threading=bool(data.get("use_threading", False)),
-            max_thread_workers=int(data.get("max_thread_workers", 3)),
+            max_concurrent_pages=int(data.get("max_concurrent_pages", data.get("max_thread_workers", 5))),
             scroll_pause_time=scroll_pause_time,
             max_scroll_attempts=max_scroll_attempts,
             delay_between_queries_seconds_min=float(data.get("delay_between_queries_seconds_min", 3.0)),
@@ -126,18 +123,11 @@ class EmailScraper:
         self.visited_urls: Set[str] = set()
         self.company_phones: Dict[str, str] = {}
         self.config = config
-        self.use_threading = config.use_threading
         self.headless = config.headless
         self.output_filename = Path(config.output_filename)
         self.phone_min_digits = config.phone_min_digits
-        self.max_thread_workers = config.max_thread_workers
-        self.lock = threading.Lock()
-        # Playwright handles Chromium download; ensure browser is present
         self.pw: Optional[Playwright] = None
         self.browser: Optional[Browser] = None
-        self.context: Optional[BrowserContext] = None
-        self.page: Optional[Page] = None
-        self._init_playwright_with_fallback()
         self._load_existing_data()
 
     def _load_existing_data(self) -> None:
@@ -148,12 +138,11 @@ class EmailScraper:
         try:
             with self.output_filename.open("r", encoding="utf-8") as f:
                 reader = csv.reader(f)
-                headers = next(reader, None) # Skip header
+                next(reader, None) # Skip header
                 count = 0
                 for row in reader:
                     if len(row) < 4:
                         continue
-                    # Format: Company, Email, Phone, Website
                     try:
                         _, email, phone, website = row[:4]
                     except ValueError:
@@ -167,12 +156,11 @@ class EmailScraper:
                             self.company_phones[website] = phone
                     count += 1
                 print(f"[*] Loaded {count} existing records. Resuming...")
-        except Exception as e:
-            print(f"[!] Failed to load existing data: {e}")
+        except Exception as exc:
+            print(f"[!] Failed to load existing data: {exc}")
 
-    def _init_playwright_with_fallback(self) -> None:
-        import subprocess
-        self.pw = sync_playwright().start()
+    async def _init_playwright(self) -> None:
+        self.pw = await async_playwright().start()
         launch_args = [
             "--no-sandbox",
             "--disable-dev-shm-usage",
@@ -181,78 +169,28 @@ class EmailScraper:
             "--disable-popup-blocking",
         ]
         try:
-            self.browser = self.pw.chromium.launch(headless=self.headless, args=launch_args)
+            self.browser = await self.pw.chromium.launch(headless=self.headless, args=launch_args)
         except Exception:
-            # Attempt auto-install then retry once
+             # Attempt auto-install then retry once
+            import subprocess
             try:
-                subprocess.run([
-                    "python",
-                    "-m",
-                    "playwright",
-                    "install",
-                    "--with-deps",
-                    "chromium",
-                ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                subprocess.run(["python", "-m", "playwright", "install", "--with-deps", "chromium"], check=True)
             except Exception:
                 pass
-            self.browser = self.pw.chromium.launch(headless=self.headless, args=launch_args)
+            self.browser = await self.pw.chromium.launch(headless=self.headless, args=launch_args)
+
+    async def _create_context(self) -> BrowserContext:
+        if not self.browser:
+            raise RuntimeError("Browser not initialized")
+        
         ua = (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
-        self.context = self.browser.new_context(user_agent=ua, java_script_enabled=True)
+        context = await self.browser.new_context(user_agent=ua, java_script_enabled=True)
         # Optimize: Block resources to speed up scraping
-        self.context.route("**/*.{png,jpg,jpeg,gif,webp,svg,css,woff,woff2,mp4,mp3}", lambda route: route.abort())
-        self.page = self.context.new_page()
-
-    def _accept_gmaps_cookies(self) -> None:
-        from playwright.sync_api import Frame
-
-        page = self.page
-        if page is None:
-            return
-
-        selectors = [
-            "button[aria-label='Accept all']",
-            "button[aria-label='I agree']",
-            "button[aria-label='Accept all cookies']",
-            "button[jsname='b3VHJd']",
-        ]
-        texts = ["Accept all", "I agree", "Accept cookies", "Agree to all"]
-
-        def try_click_on(target: Page | Frame) -> bool:
-            for selector in selectors:
-                try:
-                    el = target.query_selector(selector)
-                    if el:
-                        el.click()
-                        time.sleep(1.5)
-                        return True
-                except Exception:
-                    continue
-            for text in texts:
-                try:
-                    el = target.query_selector(f"//button[contains(., '{text}')]")
-                    if el:
-                        el.click()
-                        time.sleep(1.5)
-                        return True
-                except Exception:
-                    continue
-            return False
-
-        try:
-            if try_click_on(page):
-                return
-            for iframe in page.query_selector_all("iframe"):
-                try:
-                    inner = iframe.content_frame()
-                    if inner and try_click_on(inner):
-                        break
-                except Exception:
-                    continue
-        except Exception:
-            pass
+        await context.route("**/*.{png,jpg,jpeg,gif,webp,svg,css,woff,woff2,mp4,mp3}", lambda route: route.abort())
+        return context
 
     def extract_emails(self, text: str) -> List[str]:
         found_emails = re.findall(EMAIL_REGEX, text, re.IGNORECASE)
@@ -294,51 +232,55 @@ class EmailScraper:
             return f"+1 ({digits[1:4]}) {digits[4:7]}-{digits[7:]}"
         return phone
 
-    def scrape_google_maps(self, query: str, max_results: int = 0, scroll_pause: float = 2, max_scrolls: int = 20) -> List[str]:
-        if not self.page:
-            raise RuntimeError("Browser is not initialized for Google Maps scraping.")
+    async def scrape_google_maps(self, query: str, max_results: int = 0) -> List[str]:
         print(f"\n[*] Google Maps search: '{query}'")
         websites: List[str] = []
         all_result_urls: Set[str] = set()
+        
+        context = await self._create_context()
+        page = await context.new_page()
+        
         try:
-            page = self.page
-            assert page is not None
             search_url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
-            page.goto(search_url, wait_until="domcontentloaded")
-            self._accept_gmaps_cookies()
+            await page.goto(search_url, wait_until="domcontentloaded")
+            await self._accept_gmaps_cookies(page)
             print("[*] Waiting for search results...")
-            time.sleep(4)
-            self._accept_gmaps_cookies()
-            print("[*] Scraping all available results (scrolling to load more)...")
+            await asyncio.sleep(4)
+            await self._accept_gmaps_cookies(page)
+            
+            # Scrolling logic
             result_selector = None
             for selector in GOOGLE_MAPS_RESULT_SELECTORS:
                 try:
-                    links = page.query_selector_all(selector)
-                    if links:
+                    if await page.query_selector(selector):
                         result_selector = selector
-                        print(f"   [+] Using selector: {selector}")
                         break
                 except Exception:
                     continue
+            
             if not result_selector:
                 print("[!] Could not find results panel")
+                await context.close()
                 return websites
+            
+            print("[*] Scraping results...")
             last_count = 0
             scroll_attempts = 0
             no_new_results_count = 0
+            max_scrolls = self.config.max_scroll_attempts
+            
             while scroll_attempts < max_scrolls:
                 try:
-                    result_links = page.query_selector_all(result_selector)
+                    result_links = await page.query_selector_all(result_selector)
                     current_urls = set()
                     for el in result_links:
-                        try:
-                            href = el.get_attribute("href")
-                            if href and "/maps/place/" in href:
-                                current_urls.add(href)
-                        except Exception:
-                            continue
+                        href = await el.get_attribute("href")
+                        if href and "/maps/place/" in href:
+                            current_urls.add(href)
+                    
                     all_result_urls.update(current_urls)
                     current_count = len(all_result_urls)
+                    
                     if current_count > last_count:
                         print(f"   [>] Found {current_count} results so far...")
                         last_count = current_count
@@ -346,49 +288,53 @@ class EmailScraper:
                     else:
                         no_new_results_count += 1
                         if no_new_results_count >= 3:
-                            print(f"   [+] No more results found after {scroll_attempts} scrolls")
                             break
-                    panel = page.query_selector("div[role='feed']")
+                            
+                    panel = await page.query_selector("div[role='feed']")
                     if panel:
-                        page.evaluate("el => el.scrollTop = el.scrollHeight", panel)
-                    time.sleep(scroll_pause)
+                        await panel.evaluate("el => el.scrollTop = el.scrollHeight")
+                    await asyncio.sleep(self.config.scroll_pause_time)
                     scroll_attempts += 1
                 except Exception:
-                    try:
-                        page.evaluate("window.scrollBy(0, 1000)")
-                        time.sleep(scroll_pause)
-                        scroll_attempts += 1
-                    except Exception:
-                        break
+                    break
+
             result_urls = list(all_result_urls)
             if max_results > 0:
                 result_urls = result_urls[:max_results]
-            print(f"[+] Collected {len(result_urls)} unique results")
+            
+            print(f"[+] Collected {len(result_urls)} unique results. Visiting details...")
+            
+            # Visit each map result to get the website URL
+            # We can do this concurrently too, but let's keep it simple: serially for maps details, parallel for external sites
             for i, place_url in enumerate(result_urls, 1):
                 try:
-                    print(f"\n   Company {i}/{len(result_urls)}")
-                    page.goto(place_url, wait_until="domcontentloaded")
-                    time.sleep(2)
-                    page_html = page.content()
-                    maps_emails = self.extract_emails(page_html)
-                    maps_phone = self.extract_phone(page_html)
+                    await page.goto(place_url, wait_until="domcontentloaded")
+                    await asyncio.sleep(1) # Slight delay to load content
+                    content = await page.content()
+                    
+                    # Opportunistic email/phone grab from Maps entry
+                    maps_emails = self.extract_emails(content)
+                    maps_phone = self.extract_phone(content)
                     if maps_emails:
                         self._record_contact_details(place_url, maps_emails, maps_phone)
+
                     website_pattern = (
                         r'https?://(?!.*google\.com|.*facebook\.com|.*instagram\.com)'
                         r"[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:/[^\s\"<>]*)?"
                     )
-                    matches = re.findall(website_pattern, page_html)
+                    matches = re.findall(website_pattern, content)
                     website_url = next(
                         (m for m in matches if not any(s in m.lower() for s in MAPS_WEBSITE_SKIP_KEYWORDS)),
                         None
                     )
+                    
                     if not website_url:
                         try:
-                            wb = page.query_selector("a[data-item-id='authority']")
-                            website_url = wb.get_attribute("href") if wb else None
+                            wb = await page.query_selector("a[data-item-id='authority']")
+                            website_url = await wb.get_attribute("href") if wb else None
                         except Exception:
-                            website_url = None
+                            pass
+                            
                     if website_url:
                         if "/url?q=" in website_url:
                             website_url = website_url.split("/url?q=", 1)[1].split("&")[0]
@@ -397,130 +343,172 @@ class EmailScraper:
                         clean_url = website_url.split("?", 1)[0].split("#", 1)[0]
                         if clean_url not in websites:
                             websites.append(clean_url)
-                            print(f"      [+] {clean_url}")
-                    else:
-                        print("      [!] No website found")
-                except Exception as e:
-                    print(f"      [X] Error: {e}")
+                except Exception:
                     continue
-            print(f"\n[+] {len(websites)} websites extracted from Google Maps")
+                    
         except Exception as e:
-            print(f"[X] Error with Google Maps: {str(e)}")
+            print(f"[X] Error with Google Maps: {e}")
+        finally:
+            await context.close()
+            
         return websites
 
+    async def _accept_gmaps_cookies(self, page: Page) -> None:
+        selectors = [
+            "button[aria-label='Accept all']",
+            "button[aria-label='I agree']",
+            "button[aria-label='Accept all cookies']",
+            "button[jsname='b3VHJd']",
+        ]
+        texts = ["Accept all", "I agree", "Accept cookies", "Agree to all"]
+        
+        async def try_click(target) -> bool:
+            for sel in selectors:
+                try:
+                    el = await target.query_selector(sel)
+                    if el:
+                        await el.click()
+                        return True
+                except Exception:
+                    pass
+            for text in texts:
+                try:
+                    el = await target.query_selector(f"//button[contains(., '{text}')]")
+                    if el:
+                        await el.click()
+                        return True
+                except Exception:
+                    pass
+            return False
+
+        try:
+            if await try_click(page):
+                return
+            frames = page.frames
+            for frame in frames:
+                if await try_click(frame):
+                    return
+        except Exception:
+            pass
+
     def _record_contact_details(self, url: str, emails: List[str], phone: Optional[str]) -> None:
+        # Synchronous part since we just update dicts
         for email in emails:
             email_lower = email.lower().strip()
-            with self.lock:
-                if any(e.lower() == email_lower for e in self.emails.keys()):
-                    continue
-                self.emails[email.strip()] = url
-                if phone and url not in self.company_phones:
-                    self.company_phones[url] = phone
+            if any(e.lower() == email_lower for e in self.emails.keys()):
+                continue
+            self.emails[email.strip()] = url
+            if phone and url not in self.company_phones:
+                self.company_phones[url] = phone
             print(f"   [+] Email found: {email.strip()}")
 
-    def _try_contact_page(self, page: Page) -> None:
-        for keyword in CONTACT_KEYWORDS:
-            try:
-                link = page.query_selector(f"a:has-text('{keyword}')")
-                if not link:
-                    continue
-                href = link.get_attribute("href")
-                if not href or not href.startswith("http"):
-                    continue
-                with self.lock:
-                    if href in self.visited_urls:
-                        continue
-                    self.visited_urls.add(href)
-                page.goto(href, wait_until="domcontentloaded")
-                time.sleep(1)
-                contact_emails = self.extract_emails(page.content())
-                if contact_emails:
-                    self._record_contact_details(href, contact_emails, phone=None)
-                break
-            except Exception:
-                continue
-
-    def scrape_website(self, url: str, driver: Optional[Page] = None) -> None:
-        with self.lock:
-            if url in self.visited_urls:
-                return
-            self.visited_urls.add(url)
-        if driver is None:
-            ctx = self.context
-            if ctx is None:
-                raise RuntimeError("Browser is not initialized for website scraping.")
-            page = ctx.new_page()
-        else:
-            page = driver
-        max_retries = 3
-        retry_count = 0
-        while retry_count < max_retries:
+    async def scrape_website_concurrent(self, url: str, semaphore: asyncio.Semaphore) -> None:
+        if url in self.visited_urls:
+            return
+        self.visited_urls.add(url)
+        
+        async with semaphore:
+            context = await self._create_context()
+            page = await context.new_page()
             try:
                 print(f"[*] Scanning: {url}")
-                page.goto(url, wait_until="domcontentloaded")
-                time.sleep(2)
-                page_source = page.content()
-                emails = self.extract_emails(page_source)
-                phone = self.extract_phone(page_source)
+                try:
+                    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    await asyncio.sleep(2)
+                except Exception:
+                    # Retry once or just fail fast
+                    await context.close()
+                    return
+
+                content = await page.content()
+                emails = self.extract_emails(content)
+                phone = self.extract_phone(content)
+                
                 if emails:
                     self._record_contact_details(url, emails, phone)
                 else:
-                    self._try_contact_page(page)
-                break
-            except Exception as e:
-                msg = str(e)
-                if "net::ERR_NAME_NOT_RESOLVED" in msg:
-                    print("   [!] Skipping unreachable domain (DNS error)")
-                    break
-                retry_count += 1
-                first_line = msg.splitlines()[0] if msg else "Unknown error"
-                if retry_count < max_retries:
-                    print(f"   [!] Error, retrying ({retry_count}/{max_retries}): {first_line}")
-                    time.sleep(2)
-                else:
-                    print(f"   [X] Failed after {max_retries} attempts: {first_line}")
-                    break
-        if driver is not None:
-            try:
-                driver.close()
+                    # Try contact page
+                    for keyword in CONTACT_KEYWORDS:
+                        try:
+                            link = await page.query_selector(f"a:has-text('{keyword}')")
+                            if not link:
+                                continue
+                            href = await link.get_attribute("href")
+                            if not href or not href.startswith("http"):
+                                continue
+                            
+                            if href in self.visited_urls:
+                                continue
+                            self.visited_urls.add(href)
+                            
+                            await page.goto(href, wait_until="domcontentloaded", timeout=20000)
+                            await asyncio.sleep(1)
+                            content = await page.content()
+                            contact_emails = self.extract_emails(content)
+                            if contact_emails:
+                                self._record_contact_details(href, contact_emails, None)
+                            break
+                        except Exception:
+                            continue
+                        
             except Exception:
-                pass
+                pass # Silent fail on individual sites to keep moving
+            finally:
+                await context.close()
 
-    def run(self, queries: List[str], max_sites_per_query: int = 0, scroll_pause: float = 2, max_scrolls: int = 20) -> None:
-        if self.use_threading:
-            print("[!] Threading is not enabled in Playwright mode; proceeding single-threaded.")
+    async def run(self) -> None:
+        queries = [f"{self.config.search_term} {city}" for city in self.config.locations]
         print(f"\n[>] Collecting websites from {len(queries)} search queries...")
+        
+        await self._init_playwright()
+        if not self.browser:
+             print("[X] Browser failed to launch")
+             return
+
         all_websites: List[str] = []
         for i, query in enumerate(queries, 1):
             print(f"\n{'=' * 60}")
             print(f"Search Query {i}/{len(queries)}: {query}")
             print(f"{'=' * 60}")
-            websites = self.scrape_google_maps(query, max_sites_per_query, scroll_pause, max_scrolls)
-            all_websites.extend(websites)
+            sites = await self.scrape_google_maps(query, self.config.max_results_per_query)
+            all_websites.extend(sites)
             if i < len(queries):
-                wait_time = random.uniform(
-                    float(self.config.delay_between_queries_seconds_min),
-                    float(self.config.delay_between_queries_seconds_max),
-                )
-                print(f"\n[*] Waiting {wait_time:.1f} seconds...")
-                time.sleep(wait_time)
+                delay = random.uniform(self.config.delay_between_queries_seconds_min, self.config.delay_between_queries_seconds_max)
+                print(f"\n[*] Waiting {delay:.1f} seconds...")
+                await asyncio.sleep(delay)
+        
         unique_websites = list(set(all_websites))
         print(f"\n{'=' * 60}")
         print(f"[>] TOTAL: {len(unique_websites)} unique websites found")
-        print("[>] Starting email extraction...")
+        print("[>] Starting email extraction with concurrency...")
         print(f"{'=' * 60}")
-        for i, url in enumerate(unique_websites, 1):
-            print(f"\n[>] Website {i}/{len(unique_websites)} ({int(i / len(unique_websites) * 100)}%)")
-            self.scrape_website(url)
-            # Save incrementally so UI updates
+
+        # Parallel processing of websites
+        sem = asyncio.Semaphore(self.config.max_concurrent_pages)
+        tasks = []
+        
+        for i, url in enumerate(unique_websites):
+            tasks.append(self.scrape_website_concurrent(url, sem))
+            
+        # Chunking tasks to allow incremental saves
+        chunk_size = 10
+        for i in range(0, len(tasks), chunk_size):
+            chunk = tasks[i:i + chunk_size]
+            await asyncio.gather(*chunk)
             self.save_results()
-            if i % 5 == 0:
-                print(f"\n[>] Progress: {len(self.emails)} emails found so far")
+            print(f"\n[>] Progress: {len(self.emails)} emails found so far")
+            
+        self.save_results()
+        print(f"\n{'=' * 70}")
+        print("[+] DONE!")
+        print(f"{'=' * 70}")
 
     def save_results(self, filename: Optional[str] = None) -> str:
         if filename is None:
-            filename = self.output_filename
+            filename = str(self.output_filename)
+        else:
+            filename = str(filename)
+            
         unique_emails: Dict[str, Dict[str, str]] = {}
         for email, source_url in self.emails.items():
             email_lower = email.lower().strip()
@@ -533,20 +521,17 @@ class EmailScraper:
                     "phone": phone,
                     "website": source_url,
                 }
-        # Prettier CSV: Company, Email, Phone, Website (sorted by Company then Email)
+        
         rows = [[d["company"], d["email"], d["phone"], d["website"]] for d in unique_emails.values()]
         rows.sort(key=lambda r: (r[0].lower(), r[1].lower()))
         
-        # Atomic write: write to temp file then rename
         temp_filename = f"{filename}.tmp"
         with open(temp_filename, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f, delimiter=",", quoting=csv.QUOTE_MINIMAL)
             writer.writerow(["Company", "Email", "Phone", "Website"])
             writer.writerows(rows)
         os.replace(temp_filename, filename)
-        
-        print(f"\n[+] {len(rows)} unique business emails saved in: {filename}")
-        return filename
+        return str(filename)
 
     @staticmethod
     def _guess_company_name(email: str, source_url: str) -> str:
@@ -564,75 +549,37 @@ class EmailScraper:
         base = base.replace("-", " ").replace("_", " ")
         return " ".join(word.capitalize() for word in base.split())
 
-    def close(self) -> None:
-        try:
-            if self.context is not None:
-                self.context.close()
-            if self.browser is not None:
-                self.browser.close()
-            if self.pw is not None:
-                self.pw.stop()
-        except Exception:
-            pass
+    async def close(self) -> None:
+        if self.browser:
+            await self.browser.close()
+        if self.pw:
+            await self.pw.stop()
 
 
-def main() -> None:
+async def main_async() -> None:
     print("=" * 70)
-    print("   EMAIL SCRAPER")
-    print("   Google Maps Scraping with Browser Automation")
+    print("   EMAIL SCRAPER (Async)")
     print("=" * 70)
     default_cfg = os.environ.get("SCRAPER_CONFIG", "config.json")
-    parser = argparse.ArgumentParser(description="Email Scraper (Google Maps)")
-    parser.add_argument("--config", default=default_cfg, help="Path to config JSON file")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default=default_cfg)
     args = parser.parse_args()
+    
     try:
         cfg = Config.load(args.config)
-    except FileNotFoundError:
-        print(f"[X] Config file not found: {args.config}")
-        return
     except Exception as e:
-        print(f"[X] Failed to load config: {e}")
+        print(f"[X] Config Error: {e}")
         return
-    if not cfg.search_term:
-        print("[X] 'search_term' is required in config.json")
-        return
-    if not cfg.locations:
-        print("[X] 'locations' must be a non-empty array in config.json")
-        return
-    queries = [f"{cfg.search_term} {city}" for city in cfg.locations]
-    print("\n[*] Configuration:")
-    print(f"   - Headless: {cfg.headless}")
-    print(f"   - Threading: {cfg.use_threading} (workers={cfg.max_thread_workers})")
-    print(f"   - Scroll pause: {cfg.scroll_pause_time}s, Max scrolls: {cfg.max_scroll_attempts}")
-    scraper: Optional[EmailScraper] = None
-    try:
-        scraper = EmailScraper(cfg)
-        print("\n[*] Starting search...")
-        print("[!] This may take several minutes...\n")
-        scraper.run(
-            queries=queries,
-            max_sites_per_query=cfg.max_results_per_query,
-            scroll_pause=cfg.scroll_pause_time,
-            max_scrolls=cfg.max_scroll_attempts,
-        )
-        if scraper.emails:
-            filename = scraper.save_results()
-            print(f"\n{'=' * 70}")
-            print("[+] DONE!")
-            print(f"{'=' * 70}")
-            print("\n[>] Summary:")
-            print(f"   [>] Visited websites: {len(scraper.visited_urls)}")
-            print(f"   [>] Found emails: {len(scraper.emails)}")
-            print(f"   [>] Saved in: {filename}")
-        else:
-            print("\n[!] No emails found")
-    except Exception as e:
-        print(f"\n[X] Error: {str(e)}")
-    finally:
-        if scraper:
-            scraper.close()
-            print("\n[*] Browser closed")
 
+    if not cfg.search_term:
+        print("[X] 'search_term' required")
+        return
+
+    scraper = EmailScraper(cfg)
+    try:
+        await scraper.run()
+    finally:
+        await scraper.close()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main_async())

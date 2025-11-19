@@ -71,7 +71,28 @@
 
                 {% if data %}
                     <div class="table-responsive">
-                        {{ data | safe }}
+                        <table class="table table-hover table-striped align-middle">
+                            <thead>
+                                <tr>
+                                    {% if data|length > 0 %}
+                                        {% for key in data[0].keys() %}
+                                            <th>{{ key }}</th>
+                                        {% endfor %}
+                                    {% else %}
+                                        <th>No Data</th>
+                                    {% endif %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in data %}
+                                    <tr>
+                                        {% for value in row.values() %}
+                                            <td>{{ value }}</td>
+                                        {% endfor %}
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </div>
                 {% else %}
                     <div class="text-center py-5">
@@ -111,8 +132,8 @@
                                 <input type="number" class="form-control" name="max_results" value="{{ config.max_results_per_query if config else 10 }}" required min="0">
                             </div>
                             <div class="col-md-6 mb-3">
-                                <label class="form-label fw-bold">Thread Workers</label>
-                                <input type="number" class="form-control" name="max_thread_workers" value="{{ config.max_thread_workers if config else 3 }}" required min="1" max="10">
+                                <label class="form-label fw-bold">Concurrent Pages</label>
+                                <input type="number" class="form-control" name="max_concurrent_pages" value="{{ config.max_concurrent_pages if config else 5 }}" required min="1" max="20">
                             </div>
                         </div>
                     </div>
