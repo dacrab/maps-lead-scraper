@@ -19,6 +19,7 @@ COPY requirements.txt ./
 RUN python -m pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt \
   && python -m playwright install --with-deps chromium
 
+COPY shared.py ./
 COPY scraper.py ./
 COPY config.json ./
 COPY start.sh ./
