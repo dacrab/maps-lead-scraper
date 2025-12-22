@@ -1,6 +1,6 @@
-# Lead Scraper 2025 ⚡
+# Maps Lead Scraper ⚡
 
-A minimalist, high-performance business lead generation tool. It scrapes Google Maps for businesses and automatically crawls their websites to extract contact information (Emails & Phone Numbers).
+A straightforward tool to scrape business leads from Google Maps and extract contact details from their websites.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.9+-blue.svg)
