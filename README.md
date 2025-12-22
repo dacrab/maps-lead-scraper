@@ -22,8 +22,8 @@ A straightforward tool to scrape business leads from Google Maps and extract con
 
 1.  **Clone the repository**
     ```bash
-    git clone https://github.com/yourusername/lead-scraper.git
-    cd lead-scraper
+    git clone https://github.com/dacrab/maps-lead-scraper.git
+    cd maps-lead-scraper
     ```
 
 2.  **Install dependencies**
