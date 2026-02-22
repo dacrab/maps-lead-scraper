@@ -1,293 +1,347 @@
 <!DOCTYPE html>
-<html lang="en" x-data="app()" :class="{ 'dark': darkMode }">
-
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lead Scraper</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <script>tailwind = { darkMode: 'media', theme: { extend: { fontFamily: { mono: ['JetBrains Mono', 'ui-monospace', 'monospace'] } } } }</script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-        }
-    </script>
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <style>
-        [x-cloak] {
-            display: none !important;
-        }
-
-        .dark body {
-            background-color: #030712;
-        }
-    </style>
+    <script defer src="https://unpkg.com/alpinejs@3.14.3/dist/cdn.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>[x-cloak]{display:none!important}</style>
 </head>
+<body class="font-mono bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 h-screen flex overflow-hidden"
+    x-data="app()" x-init="init()">
 
-<body class="bg-gray-50 text-gray-900 dark:text-gray-100 min-h-screen transition-colors duration-200">
-    <!-- Nav -->
-    <nav class="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <img src="/static/logo.svg" alt="Logo" class="w-8 h-8">
-                <span class="text-xl font-black tracking-tight">SCRAPER</span>
-            </div>
-            <div class="flex items-center gap-6">
-                <div class="flex gap-4">
-                    <button @click="tab = 'dashboard'"
-                        :class="tab === 'dashboard' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500'"
-                        class="text-sm font-bold uppercase tracking-wider transition-colors">Dashboard</button>
-                    <button @click="tab = 'config'"
-                        :class="tab === 'config' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500'"
-                        class="text-sm font-bold uppercase tracking-wider transition-colors">Settings</button>
-                </div>
-                <!-- Dark Mode Toggle -->
-                <button @click="toggleDark()"
-                    class="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all">
-                    <!-- Moon (Show in Light Mode) -->
-                    <svg x-show="!darkMode" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                        stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round"
-                            d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
-                    </svg>
-                    <!-- Sun (Show in Dark Mode) -->
-                    <svg x-show="darkMode" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                        stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round"
-                            d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
-                    </svg>
-                </button>
-            </div>
+<div x-show="sidebarOpen && isMobile" x-cloak @click="sidebarOpen = false"
+    x-transition:enter="transition duration-150" x-transition:leave="transition duration-100"
+    class="fixed inset-0 bg-black/40 z-20"></div>
+
+<aside class="shrink-0 border-r border-zinc-200 dark:border-zinc-800 flex flex-col h-full bg-white dark:bg-zinc-950 transition-all duration-200 overflow-hidden"
+    :class="isMobile
+        ? (sidebarOpen ? 'fixed inset-y-0 left-0 z-30 w-52' : 'fixed inset-y-0 left-0 z-30 w-52 -translate-x-full')
+        : (sidebarOpen ? 'w-52' : 'w-12')">
+
+    <div class="h-14 flex items-center border-b border-zinc-200 dark:border-zinc-800 shrink-0 transition-all duration-200"
+        :class="sidebarOpen ? 'px-3' : 'justify-center'">
+        <div class="flex items-center gap-2.5 min-w-0">
+            <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2C8.686 2 6 4.686 6 8c0 4.418 6 12 6 12s6-7.582 6-12c0-3.314-2.686-6-6-6z" fill="currentColor"/>
+                <circle cx="12" cy="8" r="2.25" fill="white"/>
+            </svg>
+            <span x-show="sidebarOpen" x-cloak class="text-sm font-bold tracking-tight whitespace-nowrap">Lead Scraper</span>
         </div>
+    </div>
+
+    <nav class="flex flex-col gap-0.5 p-2 flex-1">
+        <button @click="tab = 'dashboard'; if (isMobile) sidebarOpen = false"
+            :class="tab === 'dashboard' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-zinc-900'"
+            :title="sidebarOpen ? '' : 'Dashboard'"
+            class="flex items-center gap-2.5 px-2.5 py-2.5 rounded text-xs font-medium text-left transition-colors">
+            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 7h18M3 12h18M3 17h18"/>
+            </svg>
+            <span x-show="sidebarOpen" x-cloak class="whitespace-nowrap">Dashboard</span>
+        </button>
+        <button @click="tab = 'config'; if (isMobile) sidebarOpen = false"
+            :class="tab === 'config' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-zinc-900'"
+            :title="sidebarOpen ? '' : 'Settings'"
+            class="flex items-center gap-2.5 px-2.5 py-2.5 rounded text-xs font-medium text-left transition-colors">
+            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <span x-show="sidebarOpen" x-cloak class="whitespace-nowrap">Settings</span>
+        </button>
     </nav>
 
-    <main class="max-w-7xl mx-auto p-6">
-        <!-- Dashboard Tab -->
-        <div x-show="tab === 'dashboard'" x-cloak class="space-y-6">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div
-                    class="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
-                    <p class="text-xs font-bold text-gray-400 uppercase">Status</p>
-                    <div class="flex items-center mt-2">
-                        <div class="w-2 h-2 rounded-full mr-2"
-                            :class="running ? 'bg-green-500 animate-pulse' : 'bg-gray-300 dark:bg-gray-700'"></div>
-                        <span class="text-lg font-bold" x-text="running ? 'Active' : 'Idle'"></span>
-                    </div>
-                </div>
-                <div
-                    class="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
-                    <p class="text-xs font-bold text-gray-400 uppercase">Leads</p>
-                    <span class="text-2xl font-black mt-2 block" x-text="leads.length"></span>
-                </div>
-                <div
-                    class="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
-                    <div class="flex gap-2">
-                        <button @click="control('start')" x-show="!running"
-                            class="flex-1 bg-blue-600 text-white py-2 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20">Start</button>
-                        <button @click="control('stop')" x-show="running"
-                            class="flex-1 bg-red-500 text-white py-2 rounded-xl font-bold hover:bg-red-600 transition-all shadow-lg shadow-red-500/20">Stop</button>
-                        <button @click="confirm('Clear all leads?') && control('clear')"
-                            class="flex-1 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 py-2 rounded-xl font-bold hover:bg-gray-50 dark:hover:bg-gray-800 transition-all">Clear</button>
-                        <a href="/download"
-                            class="flex-1 border border-gray-200 dark:border-gray-700 text-center py-2 rounded-xl font-bold hover:bg-gray-50 dark:hover:bg-gray-800 transition-all">Export</a>
-                    </div>
-                </div>
+    <div class="p-2 border-t border-zinc-200 dark:border-zinc-800 space-y-1">
+        <div class="flex items-center gap-2.5 px-2.5 py-2"
+            :title="sidebarOpen ? '' : (running ? 'Running' : 'Idle') + ' — ' + leads.length + ' leads'">
+            <div class="w-4 h-4 flex items-center justify-center shrink-0">
+                <div class="w-1.5 h-1.5 rounded-full" :class="running ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-300 dark:bg-zinc-700'"></div>
             </div>
+            <span x-show="sidebarOpen" x-cloak class="text-xs text-zinc-500 whitespace-nowrap" x-text="running ? 'Running' : 'Idle'"></span>
+            <span x-show="sidebarOpen" x-cloak class="ml-auto text-xs font-medium" x-text="leads.length"></span>
+        </div>
+        <button @click="sidebarOpen = !sidebarOpen" x-show="!isMobile"
+            :title="sidebarOpen ? 'Collapse' : 'Expand'"
+            class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded text-xs text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors">
+            <svg class="w-4 h-4 shrink-0 transition-transform duration-200" :class="sidebarOpen ? '' : 'rotate-180'"
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7M19 19l-7-7 7-7"/>
+            </svg>
+            <span x-show="sidebarOpen" x-cloak class="whitespace-nowrap">Collapse</span>
+        </button>
+    </div>
+</aside>
 
-            <!-- Logs -->
-            <div class="bg-gray-900 rounded-2xl overflow-hidden border border-gray-800 shadow-xl">
-                <div class="px-4 py-2 bg-gray-800/50 border-b border-gray-800 flex justify-between items-center">
-                    <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Live Terminal</span>
-                    <button @click="clearLogs()"
-                        class="text-[10px] text-gray-500 hover:text-white font-bold uppercase transition-colors">Clear</button>
-                </div>
-                <div x-ref="logs"
-                    class="h-40 overflow-y-auto p-4 font-mono text-xs text-gray-400 leading-relaxed scrollbar-thin scrollbar-thumb-gray-700">
-                    <template x-for="log in logLines">
-                        <div class="py-0.5 border-l-2 border-transparent hover:border-blue-500/50 pl-2 transition-colors"
-                            x-text="log"></div>
-                    </template>
-                </div>
-            </div>
+<div class="flex flex-col flex-1 overflow-hidden min-w-0">
 
-            <!-- Table -->
-            <div
-                class="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
-                <div class="p-4 border-b border-gray-50 dark:border-gray-800 flex justify-between items-center">
-                    <h3 class="font-black uppercase tracking-tight">Results</h3>
-                    <input type="text" x-model="search" placeholder="Search..."
-                        class="bg-gray-50 dark:bg-gray-800 dark:text-white border-none rounded-lg px-4 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500/20">
-                </div>
-                <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
-                    <table class="w-full text-left text-sm">
-                        <thead
-                            class="bg-gray-50 dark:bg-gray-800/50 text-gray-400 dark:text-gray-500 font-bold uppercase text-[10px] sticky top-0 z-10 backdrop-blur-sm">
-                            <tr>
-                                <th class="px-6 py-3">Business</th>
-                                <th class="px-6 py-3">Contact</th>
-                                <th class="px-6 py-3">Details</th>
-                                <th class="px-6 py-3 text-right">Links</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-50 dark:divide-gray-800">
-                            <template x-for="lead in filteredLeads">
-                                <tr class="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
-                                    <td class="px-6 py-4">
-                                        <div class="font-bold text-gray-900 dark:text-gray-100" x-text="lead.Company">
-                                        </div>
-                                        <div class="text-[10px] text-gray-400 dark:text-gray-500" x-show="lead.Rating">★
-                                            <span x-text="lead.Rating"></span> (<span x-text="lead.Reviews"></span>)
-                                        </div>
-                                    </td>
-                                    <td class="px-6 py-4">
-                                        <template x-if="lead.Email">
-                                            <a :href="'mailto:'+lead.Email"
-                                                class="text-blue-600 dark:text-blue-400 font-medium block hover:underline"
-                                                x-text="lead.Email"></a>
-                                        </template>
-                                        <div class="text-gray-500 dark:text-gray-400 text-xs mt-0.5"
-                                            x-text="lead.Phone"></div>
-                                    </td>
-                                    <td class="px-6 py-4">
-                                        <div class="text-xs text-gray-600 dark:text-gray-400" x-text="lead.Category">
-                                        </div>
-                                        <div class="text-[10px] text-gray-400 dark:text-gray-500 truncate max-w-xs"
-                                            x-text="lead.Address"></div>
-                                    </td>
-                                    <td class="px-6 py-4 text-right space-x-2">
-                                        <a :href="lead.Website" target="_blank"
-                                            class="text-gray-300 dark:text-gray-600 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                                            x-show="lead.Website">
-                                            <svg class="w-4 h-4 inline" fill="none" viewBox="0 0 24 24"
-                                                stroke="currentColor">
-                                                <path
-                                                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                                            </svg>
-                                        </a>
-                                        <a :href="lead['Maps URL']" target="_blank"
-                                            class="text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                                            x-show="lead['Maps URL']">
-                                            <svg class="w-4 h-4 inline" fill="none" viewBox="0 0 24 24"
-                                                stroke="currentColor">
-                                                <path
-                                                    d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                                                <path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" stroke-width="2"
-                                                    stroke-linecap="round" stroke-linejoin="round" />
-                                            </svg>
-                                        </a>
-                                    </td>
-                                </tr>
-                            </template>
-                        </tbody>
-                    </table>
-                </div>
+    <div x-show="tab === 'dashboard'" x-cloak class="flex flex-col flex-1 overflow-hidden">
+        <div class="border-b border-zinc-200 dark:border-zinc-800 flex flex-wrap items-center gap-2 px-4 py-2 shrink-0">
+            <button @click="sidebarOpen = true" x-show="isMobile"
+                class="p-1.5 rounded text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+                </svg>
+            </button>
+            <button @click="control('start')" x-show="!running"
+                class="px-3 py-1.5 text-xs font-medium bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded hover:opacity-80 transition-opacity">Start</button>
+            <button @click="control('stop')" x-show="running"
+                class="px-3 py-1.5 text-xs font-medium border border-zinc-300 dark:border-zinc-700 rounded hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors text-zinc-700 dark:text-zinc-300">Stop</button>
+            <button @click="exportCsv()"
+                class="px-3 py-1.5 text-xs font-medium border border-zinc-200 dark:border-zinc-800 rounded hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors text-zinc-500">Export</button>
+            <button @click="showClearConfirm = !showClearConfirm"
+                class="px-3 py-1.5 text-xs font-medium border border-zinc-200 dark:border-zinc-800 rounded hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors text-zinc-500">Clear</button>
+            <div x-show="showClearConfirm" x-cloak class="flex items-center gap-2">
+                <span class="text-xs text-zinc-500">Delete all?</span>
+                <button @click="control('clear'); showClearConfirm = false"
+                    class="px-2 py-1 text-xs font-medium text-red-600 border border-red-200 dark:border-red-800 rounded hover:bg-red-50 dark:hover:bg-red-950 transition-colors">Yes</button>
+                <button @click="showClearConfirm = false"
+                    class="px-2 py-1 text-xs text-zinc-500 border border-zinc-200 dark:border-zinc-700 rounded hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors">No</button>
             </div>
+            <input type="text" x-model="search" placeholder="Filter..."
+                class="ml-auto bg-transparent border border-zinc-200 dark:border-zinc-800 rounded px-3 py-1.5 text-xs outline-none focus:border-zinc-400 dark:focus:border-zinc-600 transition-colors w-28 sm:w-48 placeholder-zinc-400">
         </div>
 
-        <!-- Config Tab -->
-        <div x-show="tab === 'config'" x-cloak
-            class="max-w-2xl mx-auto bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
-            <h2 class="text-2xl font-black mb-6">Settings</h2>
-            <div class="space-y-6">
+        <div class="flex-1 overflow-auto min-h-0">
+            <table class="w-full text-xs border-collapse min-w-[600px]">
+                <thead class="sticky top-0 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800 z-10">
+                    <tr class="text-zinc-400 dark:text-zinc-600 uppercase text-[10px] tracking-wider">
+                        <th class="text-left px-4 py-2.5 font-medium">Company</th>
+                        <th class="text-left px-4 py-2.5 font-medium">Email</th>
+                        <th class="text-left px-4 py-2.5 font-medium">Phone</th>
+                        <th class="text-left px-4 py-2.5 font-medium">Category</th>
+                        <th class="text-left px-4 py-2.5 font-medium">Rating</th>
+                        <th class="text-right px-4 py-2.5 font-medium">Links</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-100 dark:divide-zinc-900">
+                    <template x-for="lead in filteredLeads" :key="lead['Maps URL']">
+                        <tr class="hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors">
+                            <td class="px-4 py-2.5">
+                                <div class="font-medium text-zinc-900 dark:text-zinc-100 truncate max-w-[180px]" x-text="lead.Company"></div>
+                                <div class="text-zinc-400 text-[10px] truncate max-w-[180px]" x-text="lead.Address"></div>
+                            </td>
+                            <td class="px-4 py-2.5">
+                                <a x-show="lead.Email" :href="'mailto:' + lead.Email"
+                                    class="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors truncate block max-w-[160px]"
+                                    x-text="lead.Email"></a>
+                            </td>
+                            <td class="px-4 py-2.5 text-zinc-500 whitespace-nowrap" x-text="lead.Phone"></td>
+                            <td class="px-4 py-2.5 text-zinc-500 truncate max-w-[120px]" x-text="lead.Category"></td>
+                            <td class="px-4 py-2.5 whitespace-nowrap text-zinc-500">
+                                <span x-show="lead.Rating">
+                                    <span x-text="lead.Rating"></span>
+                                    <span class="text-zinc-400 dark:text-zinc-600" x-text="lead.Reviews ? '(' + lead.Reviews + ')' : ''"></span>
+                                </span>
+                            </td>
+                            <td class="px-4 py-2.5 text-right whitespace-nowrap">
+                                <a :href="lead.Website" target="_blank" x-show="lead.Website"
+                                    class="inline-block text-zinc-300 dark:text-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors mr-2">
+                                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                                    </svg>
+                                </a>
+                                <a :href="lead['Maps URL']" target="_blank" x-show="lead['Maps URL']"
+                                    class="inline-block text-zinc-300 dark:text-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors">
+                                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                    </svg>
+                                </a>
+                            </td>
+                        </tr>
+                    </template>
+                    <tr x-show="filteredLeads.length === 0">
+                        <td colspan="6" class="px-4 py-12 text-center text-zinc-400 dark:text-zinc-600 text-xs"
+                            x-text="search ? 'No results match your filter.' : 'No leads yet. Start the scraper to begin.'"></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div :style="'height:' + logHeight + 'px'" class="border-t border-zinc-200 dark:border-zinc-800 shrink-0 flex flex-col" style="min-height:60px;max-height:70vh">
+            <div @mousedown="startResize($event)" @touchstart.passive="startResizeTouch($event)"
+                class="h-1.5 cursor-ns-resize hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors shrink-0"></div>
+            <div class="px-4 py-1.5 border-b border-zinc-100 dark:border-zinc-900 flex items-center gap-2 shrink-0">
+                <div class="w-1.5 h-1.5 rounded-full" :class="running ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-300 dark:bg-zinc-700'"></div>
+                <span class="text-[10px] text-zinc-400 uppercase tracking-widest">Log</span>
+            </div>
+            <div x-ref="logs" class="flex-1 overflow-y-auto px-4 py-2 space-y-0.5">
+                <template x-for="line in logLines" :key="line">
+                    <div class="text-[11px] text-zinc-500 leading-5" x-text="line"></div>
+                </template>
+                <div x-show="logLines.length === 0" class="text-[11px] text-zinc-300 dark:text-zinc-700">No activity yet.</div>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="tab === 'config'" x-cloak class="flex-1 overflow-y-auto">
+        <div class="p-4 sm:p-8 max-w-lg">
+            <h1 class="text-sm font-bold mb-6">Settings</h1>
+            <div class="space-y-5">
                 <div>
-                    <label class="block text-xs font-black uppercase text-gray-400 mb-2">Search Terms (Comma
-                        separated)</label>
-                    <input type="text" x-model="config.search_terms"
-                        class="w-full bg-gray-50 dark:bg-gray-800 dark:text-white border-none rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500/20 transition-all">
+                    <label class="block text-[10px] uppercase tracking-wider text-zinc-400 mb-1.5">Search Terms</label>
+                    <input type="text" x-model="config.search_terms" placeholder="e.g. Plumbers, Dentists"
+                        class="w-full bg-transparent border border-zinc-200 dark:border-zinc-800 rounded px-3 py-2 text-xs outline-none focus:border-zinc-400 dark:focus:border-zinc-600 transition-colors placeholder-zinc-300 dark:placeholder-zinc-700">
+                    <p class="text-[10px] text-zinc-400 mt-1">Comma-separated list of business types.</p>
                 </div>
                 <div>
-                    <label class="block text-xs font-black uppercase text-gray-400 mb-2">Locations (Comma
-                        separated)</label>
-                    <input type="text" x-model="config.locations"
-                        class="w-full bg-gray-50 dark:bg-gray-800 dark:text-white border-none rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500/20 transition-all">
+                    <label class="block text-[10px] uppercase tracking-wider text-zinc-400 mb-1.5">Locations</label>
+                    <input type="text" x-model="config.locations" placeholder="e.g. New York, London"
+                        class="w-full bg-transparent border border-zinc-200 dark:border-zinc-800 rounded px-3 py-2 text-xs outline-none focus:border-zinc-400 dark:focus:border-zinc-600 transition-colors placeholder-zinc-300 dark:placeholder-zinc-700">
+                    <p class="text-[10px] text-zinc-400 mt-1">Comma-separated list of cities or areas.</p>
                 </div>
                 <div>
-                    <label class="block text-xs font-black uppercase text-gray-400 mb-2">Max Results</label>
-                    <input type="number" x-model="config.max_results"
-                        class="w-full bg-gray-50 dark:bg-gray-800 dark:text-white border-none rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500/20 transition-all">
-                    <p class="text-[10px] text-gray-400 mt-2">Set to 0 for unlimited results.</p>
+                    <label class="block text-[10px] uppercase tracking-wider text-zinc-400 mb-1.5">Max Results</label>
+                    <input type="number" x-model="config.max_results" placeholder="0"
+                        class="w-full bg-transparent border border-zinc-200 dark:border-zinc-800 rounded px-3 py-2 text-xs outline-none focus:border-zinc-400 dark:focus:border-zinc-600 transition-colors placeholder-zinc-300 dark:placeholder-zinc-700">
+                    <p class="text-[10px] text-zinc-400 mt-1">Set to 0 for unlimited.</p>
                 </div>
-                <div class="flex items-center justify-between bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
-                    <span class="text-sm font-bold">Headless Mode</span>
+                <div class="flex items-center justify-between py-3 border-t border-b border-zinc-100 dark:border-zinc-900">
+                    <div>
+                        <p class="text-xs font-medium">Headless Mode</p>
+                        <p class="text-[10px] text-zinc-400 mt-0.5">Hide the browser window while scraping.</p>
+                    </div>
                     <button @click="config.headless = !config.headless"
-                        :class="config.headless ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'"
-                        class="w-12 h-6 rounded-full relative transition-colors">
-                        <div :class="config.headless ? 'translate-x-6' : 'translate-x-1'"
-                            class="w-4 h-4 bg-white rounded-full absolute top-1 transition-transform"></div>
+                        :class="config.headless ? 'bg-zinc-900 dark:bg-zinc-100' : 'bg-zinc-200 dark:bg-zinc-800'"
+                        class="w-10 h-5 rounded-full relative transition-colors shrink-0">
+                        <div :class="config.headless ? 'translate-x-5' : 'translate-x-0.5'"
+                            class="w-4 h-4 bg-white dark:bg-zinc-900 rounded-full absolute top-0.5 transition-transform"></div>
                     </button>
                 </div>
                 <button @click="saveConfig()"
-                    class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all">Save
-                    Changes</button>
+                    class="px-4 py-2 text-xs font-medium bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded hover:opacity-80 transition-opacity">
+                    Save Settings
+                </button>
             </div>
         </div>
-    </main>
+    </div>
 
-    <script>
-        function app() {
-            return {
-                tab: 'dashboard',
-                running: false,
-                leads: [],
-                logLines: [],
-                search: '',
-                config: { search_terms: '', locations: '', headless: true, max_results: 10 },
-                darkMode: localStorage.getItem('dark') === 'true' ||
-                    (!('dark' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches),
+</div>
 
-                async init() {
-                    this.poll();
-                    setInterval(() => this.poll(), 3000);
-                    const res = await fetch('/api/status');
-                    const data = await res.json();
-                    this.config = data.config;
-                },
+<div class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+    <template x-for="t in $store.toasts.list" :key="t.id">
+        <div x-show="t.visible"
+            x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0"
+            x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+            :class="t.type === 'error' ? 'bg-white dark:bg-zinc-900 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400' : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300'"
+            class="pointer-events-auto px-4 py-3 rounded border text-xs font-medium shadow-sm"
+            x-text="t.msg"></div>
+    </template>
+</div>
 
-                toggleDark() {
-                    this.darkMode = !this.darkMode;
-                    localStorage.setItem('dark', this.darkMode);
-                },
+<script>
+function app() {
+    return {
+        tab: 'dashboard',
+        running: false,
+        leads: [],
+        logLines: [],
+        search: '',
+        showClearConfirm: false,
+        sidebarOpen: false,
+        isMobile: window.innerWidth < 768,
+        logHeight: 144,
+        config: { search_terms: '', locations: '', headless: true, max_results: 10 },
 
-                async poll() {
-                    try {
-                        const res = await fetch('/api/status');
-                        const data = await res.json();
-                        this.running = data.running;
-                        this.leads = data.leads;
-                        this.logLines = data.logs;
-                        this.$nextTick(() => {
-                            const el = this.$refs.logs;
-                            if (el) el.scrollTop = el.scrollHeight;
-                        });
-                    } catch (e) { }
-                },
+        init() {
+            Alpine.store('toasts', {
+                list: [], _id: 0,
+                show(msg, type = 'info', duration = 3000) {
+                    const t = { id: ++this._id, msg, type, visible: true };
+                    this.list.push(t);
+                    setTimeout(() => {
+                        t.visible = false;
+                        setTimeout(() => this.list.splice(this.list.indexOf(t), 1), 200);
+                    }, duration);
+                }
+            });
+            const onResize = () => {
+                this.isMobile = window.innerWidth < 768;
+                if (!this.isMobile) this.sidebarOpen = true;
+            };
+            window.addEventListener('resize', onResize);
+            if (!this.isMobile) this.sidebarOpen = true;
+            this.poll().then(() => this._schedule());
+        },
 
-                async control(action) {
-                    await fetch(`/control/${action}`, { method: 'POST' });
-                    this.poll();
-                },
+        _schedule() {
+            setTimeout(async () => { await this.poll(); this._schedule(); }, this.running ? 2000 : 6000);
+        },
 
-                async saveConfig() {
-                    await fetch('/config', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(this.config)
-                    });
-                    alert('Settings saved!');
-                },
+        async poll() {
+            try {
+                const d = await fetch('/api/status').then(r => r.json());
+                this.running  = d.running;
+                this.leads    = d.leads;
+                this.logLines = d.logs;
+                this.config   = d.config;
+                this.$nextTick(() => {
+                    const el = this.$refs.logs;
+                    if (el) el.scrollTop = el.scrollHeight;
+                });
+            } catch {}
+        },
 
-                get filteredLeads() {
-                    if (!this.search) return this.leads;
-                    const q = this.search.toLowerCase();
-                    return this.leads.filter(l => Object.values(l).some(v => String(v).toLowerCase().includes(q)));
-                },
+        async control(action) {
+            await fetch(`/control/${action}`, { method: 'POST' });
+            await this.poll();
+        },
 
-                clearLogs() { this.logLines = []; }
-            }
+        async exportCsv() {
+            const res = await fetch('/download');
+            if (!res.ok) { Alpine.store('toasts').show('No data to export yet.', 'error'); return; }
+            const url = URL.createObjectURL(await res.blob());
+            Object.assign(document.createElement('a'), { href: url, download: 'contacts.csv' }).click();
+            URL.revokeObjectURL(url);
+            Alpine.store('toasts').show('CSV downloaded.');
+        },
+
+        async saveConfig() {
+            await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.config) });
+            Alpine.store('toasts').show('Settings saved.');
+        },
+
+        startResize(e) {
+            const startY = e.clientY, startH = this.logHeight;
+            const clamp  = h => Math.max(60, Math.min(window.innerHeight * 0.7, h));
+            const onMove = e => this.logHeight = clamp(startH - (e.clientY - startY));
+            const onUp   = () => {
+                window.removeEventListener('mousemove', onMove);
+                window.removeEventListener('mouseup', onUp);
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            };
+            document.body.style.cursor = 'ns-resize';
+            document.body.style.userSelect = 'none';
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onUp);
+        },
+
+        startResizeTouch(e) {
+            const startY = e.touches[0].clientY, startH = this.logHeight;
+            const clamp  = h => Math.max(60, Math.min(window.innerHeight * 0.7, h));
+            const onMove = e => this.logHeight = clamp(startH - (e.touches[0].clientY - startY));
+            const onUp   = () => {
+                window.removeEventListener('touchmove', onMove);
+                window.removeEventListener('touchend', onUp);
+            };
+            window.addEventListener('touchmove', onMove, { passive: true });
+            window.addEventListener('touchend', onUp);
+        },
+
+        get filteredLeads() {
+            if (!this.search) return this.leads;
+            const q = this.search.toLowerCase();
+            return this.leads.filter(l => Object.values(l).some(v => String(v).toLowerCase().includes(q)));
         }
-    </script>
+    };
+}
+</script>
 </body>
-
 </html>

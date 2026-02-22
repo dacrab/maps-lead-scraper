@@ -12,4 +12,3 @@ tests/
 venv/
 .venv/
 .env
-EOF
