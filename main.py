@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import re
-import threading
 from collections import deque
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -24,10 +23,10 @@ DEFAULT_CFG = {
     "headless": True, "max_results": 10, "concurrency": 10,
 }
 
-FIELDS          = ["Company", "Email", "Phone", "Website", "Category", "Address", "Rating", "Reviews", "Maps URL"]
+FIELDS           = ["Company", "Email", "Phone", "Website", "Category", "Address", "Rating", "Reviews", "Maps URL"]
 EXCLUDED_DOMAINS = ["google.com", "facebook.com", "instagram.com"]
-EMAIL_RE        = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
-PHONE_RE        = re.compile(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
+EMAIL_RE         = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+PHONE_RE         = re.compile(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
 
 
 class MemoryHandler(logging.Handler):
@@ -42,8 +41,8 @@ class MemoryHandler(logging.Handler):
 log_handler = MemoryHandler()
 log = logging.getLogger("scraper")
 log.setLevel(logging.INFO)
-for h in [log_handler, logging.FileHandler(BASE_DIR / "scraper.log"), logging.StreamHandler()]:
-    log.addHandler(h)
+log.addHandler(log_handler)
+log.addHandler(logging.FileHandler(BASE_DIR / "scraper.log"))
 logging.getLogger("uvicorn.access").setLevel(logging.ERROR)
 
 
@@ -51,7 +50,7 @@ class Engine:
     def __init__(self):
         self.active = False
         self.data   = []
-        self._lock  = threading.Lock()
+        self._lock  = asyncio.Lock()
         if DB_FILE.exists():
             with open(DB_FILE, encoding="utf-8") as f:
                 self.data = list(csv.DictReader(f))
@@ -61,8 +60,7 @@ class Engine:
         with open(tmp, "w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=FIELDS)
             w.writeheader()
-            with self._lock:
-                w.writerows(self.data)
+            w.writerows(self.data)
         tmp.replace(DB_FILE)
 
     async def run(self, cfg):
@@ -80,7 +78,7 @@ class Engine:
                     break
                 await self._scrape_maps(browser, q, int(cfg.get("max_results", 10)))
 
-            with self._lock:
+            async with self._lock:
                 sites = [r for r in self.data if r.get("Website") and not r.get("Email")]
             if sites and self.active:
                 log.info(f"Enriching {len(sites)} websites...")
@@ -134,7 +132,7 @@ class Engine:
             for url in urls:
                 if not self.active:
                     break
-                with self._lock:
+                async with self._lock:
                     if any(r.get("Maps URL") == url for r in self.data):
                         continue
 
@@ -158,7 +156,7 @@ class Engine:
                     if not any(d in href.lower() for d in EXCLUDED_DOMAINS):
                         res["Website"] = href.split("?")[0].rstrip("/")
 
-                with self._lock:
+                async with self._lock:
                     self.data.append(res)
                 changed = True
                 log.info(f"Captured: {res['Company']}")
@@ -195,10 +193,6 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 
-def load_cfg() -> dict:
-    return json.loads(CFG_FILE.read_text()) if CFG_FILE.exists() else DEFAULT_CFG
-
-
 @app.get("/")
 async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -206,19 +200,22 @@ async def index(request: Request):
 
 @app.get("/api/status")
 async def status():
-    with engine._lock:
+    async with engine._lock:
         leads = list(engine.data)
-    return {"running": engine.active, "leads": leads, "logs": list(log_handler.buffer), "config": load_cfg()}
+    cfg = json.loads(CFG_FILE.read_text()) if CFG_FILE.exists() else DEFAULT_CFG
+    return {"running": engine.active, "leads": leads, "logs": list(log_handler.buffer), "config": cfg}
 
 
 @app.post("/control/{action}")
 async def control(action: str):
     if action == "start" and not engine.active:
-        asyncio.create_task(engine.run(load_cfg()))
+        asyncio.create_task(engine.run(
+            json.loads(CFG_FILE.read_text()) if CFG_FILE.exists() else DEFAULT_CFG
+        ))
     elif action == "stop":
         engine.active = False
     elif action == "clear":
-        with engine._lock:
+        async with engine._lock:
             engine.data = []
         DB_FILE.unlink(missing_ok=True)
         log.info("Results cleared.")
