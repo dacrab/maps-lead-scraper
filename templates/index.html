@@ -165,7 +165,7 @@
         </div>
 
         <div :style="'height:' + logHeight + 'px'" class="border-t border-zinc-200 dark:border-zinc-800 shrink-0 flex flex-col" style="min-height:60px;max-height:70vh">
-            <div @mousedown="startResize($event)" @touchstart.passive="startResizeTouch($event)"
+            <div @mousedown="startResize($event)" @touchstart.passive="startResize($event)"
                 class="h-1.5 cursor-ns-resize hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors shrink-0"></div>
             <div class="px-4 py-1.5 border-b border-zinc-100 dark:border-zinc-900 flex items-center gap-2 shrink-0">
                 <div class="w-1.5 h-1.5 rounded-full" :class="running ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-300 dark:bg-zinc-700'"></div>
@@ -211,7 +211,7 @@
                         :class="config.headless ? 'bg-zinc-900 dark:bg-zinc-100' : 'bg-zinc-200 dark:bg-zinc-800'"
                         class="w-10 h-5 rounded-full relative transition-colors shrink-0">
                         <div :class="config.headless ? 'translate-x-5' : 'translate-x-0.5'"
-                            class="w-4 h-4 bg-white dark:bg-zinc-900 rounded-full absolute top-0.5 transition-transform"></div>
+                            class="w-4 h-4 bg-white rounded-full absolute top-0.5 transition-transform"></div>
                     </button>
                 </div>
                 <button @click="saveConfig()"
@@ -247,7 +247,7 @@ function app() {
         sidebarOpen: false,
         isMobile: window.innerWidth < 768,
         logHeight: 144,
-        config: { search_terms: '', locations: '', headless: true, max_results: 10 },
+        config: {},
 
         init() {
             Alpine.store('toasts', {
@@ -265,7 +265,8 @@ function app() {
                 this.isMobile = window.innerWidth < 768;
                 if (!this.isMobile) this.sidebarOpen = true;
             };
-            window.addEventListener('resize', onResize);
+            window.addEventListener('resize', onResize, { passive: true });
+            this._cleanupResize = () => window.removeEventListener('resize', onResize);
             if (!this.isMobile) this.sidebarOpen = true;
             this.poll().then(() => this._schedule());
         },
@@ -308,31 +309,28 @@ function app() {
         },
 
         startResize(e) {
-            const startY = e.clientY, startH = this.logHeight;
+            const touch  = e.touches?.[0];
+            const startY = touch ? touch.clientY : e.clientY;
+            const startH = this.logHeight;
             const clamp  = h => Math.max(60, Math.min(window.innerHeight * 0.7, h));
-            const onMove = e => this.logHeight = clamp(startH - (e.clientY - startY));
+            const getY   = e => e.touches ? e.touches[0].clientY : e.clientY;
+            const onMove = e => this.logHeight = clamp(startH - (getY(e) - startY));
             const onUp   = () => {
                 window.removeEventListener('mousemove', onMove);
                 window.removeEventListener('mouseup', onUp);
-                document.body.style.cursor = '';
-                document.body.style.userSelect = '';
-            };
-            document.body.style.cursor = 'ns-resize';
-            document.body.style.userSelect = 'none';
-            window.addEventListener('mousemove', onMove);
-            window.addEventListener('mouseup', onUp);
-        },
-
-        startResizeTouch(e) {
-            const startY = e.touches[0].clientY, startH = this.logHeight;
-            const clamp  = h => Math.max(60, Math.min(window.innerHeight * 0.7, h));
-            const onMove = e => this.logHeight = clamp(startH - (e.touches[0].clientY - startY));
-            const onUp   = () => {
                 window.removeEventListener('touchmove', onMove);
                 window.removeEventListener('touchend', onUp);
+                document.body.style.cursor = document.body.style.userSelect = '';
             };
-            window.addEventListener('touchmove', onMove, { passive: true });
-            window.addEventListener('touchend', onUp);
+            if (touch) {
+                window.addEventListener('touchmove', onMove, { passive: true });
+                window.addEventListener('touchend', onUp);
+            } else {
+                document.body.style.cursor = 'ns-resize';
+                document.body.style.userSelect = 'none';
+                window.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp);
+            }
         },
 
         get filteredLeads() {
