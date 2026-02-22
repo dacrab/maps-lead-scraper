@@ -9,7 +9,10 @@ from collections import deque
 from pathlib import Path
 from urllib.parse import quote_plus
 
-from flask import Flask, jsonify, request, render_template, send_file
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from playwright.async_api import async_playwright
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -21,10 +24,10 @@ DEFAULT_CFG = {
     "headless": True, "max_results": 10, "concurrency": 10,
 }
 
-FIELDS = ["Company", "Email", "Phone", "Website", "Category", "Address", "Rating", "Reviews", "Maps URL"]
+FIELDS          = ["Company", "Email", "Phone", "Website", "Category", "Address", "Rating", "Reviews", "Maps URL"]
 EXCLUDED_DOMAINS = ["google.com", "facebook.com", "instagram.com"]
-EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
-PHONE_RE = re.compile(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
+EMAIL_RE        = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+PHONE_RE        = re.compile(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
 
 
 class MemoryHandler(logging.Handler):
@@ -41,7 +44,7 @@ log = logging.getLogger("scraper")
 log.setLevel(logging.INFO)
 for h in [log_handler, logging.FileHandler(BASE_DIR / "scraper.log"), logging.StreamHandler()]:
     log.addHandler(h)
-logging.getLogger("werkzeug").setLevel(logging.ERROR)
+logging.getLogger("uvicorn.access").setLevel(logging.ERROR)
 
 
 class Engine:
@@ -186,26 +189,32 @@ class Engine:
                 await ctx.close()
 
 
-engine = Engine()
-app    = Flask(__name__)
+engine    = Engine()
+app       = FastAPI()
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 
-@app.route("/")
-def index():
-    return render_template("index.html")
+def load_cfg() -> dict:
+    return json.loads(CFG_FILE.read_text()) if CFG_FILE.exists() else DEFAULT_CFG
 
-@app.route("/api/status")
-def status():
-    cfg = json.loads(CFG_FILE.read_text()) if CFG_FILE.exists() else DEFAULT_CFG
+
+@app.get("/")
+async def index(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+
+@app.get("/api/status")
+async def status():
     with engine._lock:
         leads = list(engine.data)
-    return jsonify({"running": engine.active, "leads": leads, "logs": list(log_handler.buffer), "config": cfg})
+    return {"running": engine.active, "leads": leads, "logs": list(log_handler.buffer), "config": load_cfg()}
 
-@app.route("/control/<action>", methods=["POST"])
-def control(action):
+
+@app.post("/control/{action}")
+async def control(action: str):
     if action == "start" and not engine.active:
-        cfg = json.loads(CFG_FILE.read_text()) if CFG_FILE.exists() else DEFAULT_CFG
-        threading.Thread(target=lambda: asyncio.run(engine.run(cfg)), daemon=True).start()
+        asyncio.create_task(engine.run(load_cfg()))
     elif action == "stop":
         engine.active = False
     elif action == "clear":
@@ -214,23 +223,26 @@ def control(action):
         DB_FILE.unlink(missing_ok=True)
         log.info("Results cleared.")
     else:
-        return jsonify({"error": f"Unknown action: {action}"}), 400
-    return jsonify({"success": True})
+        return JSONResponse({"error": f"Unknown action: {action}"}, status_code=400)
+    return {"success": True}
 
-@app.route("/config", methods=["POST"])
-def save_config():
-    cfg = request.get_json(silent=True)
+
+@app.post("/config")
+async def save_config(request: Request):
+    cfg = await request.json()
     if not isinstance(cfg, dict):
-        return jsonify({"error": "Invalid JSON body"}), 400
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
     CFG_FILE.write_text(json.dumps(cfg))
-    return jsonify({"success": True})
+    return {"success": True}
 
-@app.route("/download")
-def download():
+
+@app.get("/download")
+async def download():
     if not DB_FILE.exists():
-        return jsonify({"error": "No data yet"}), 404
-    return send_file(DB_FILE, as_attachment=True)
+        return JSONResponse({"error": "No data yet"}, status_code=404)
+    return FileResponse(DB_FILE, filename="contacts.csv", media_type="text/csv")
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
