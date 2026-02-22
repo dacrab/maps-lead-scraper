@@ -5,204 +5,190 @@ import logging
 import os
 import re
 import threading
+from collections import deque
 from pathlib import Path
+from urllib.parse import quote_plus
+
 from flask import Flask, jsonify, request, render_template, send_file
 from playwright.async_api import async_playwright
 
-# --- CONFIG & CONSTANTS ---
 BASE_DIR = Path(__file__).resolve().parent
-DB_FILE = BASE_DIR / "contacts.csv"
+DB_FILE  = BASE_DIR / "contacts.csv"
 CFG_FILE = BASE_DIR / "config.json"
-LOG_FILE = BASE_DIR / "scraper.log"
 
 DEFAULT_CFG = {
     "search_terms": "Construction", "locations": "Thessaloniki",
-    "headless": True, "max_results": 10, "concurrency": 10
+    "headless": True, "max_results": 10, "concurrency": 10,
 }
 
-# Pre-compiled Regex for Performance
-EMAIL_REGEX = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")
-PHONE_REGEX = re.compile(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
+FIELDS = ["Company", "Email", "Phone", "Website", "Category", "Address", "Rating", "Reviews", "Maps URL"]
+EXCLUDED_DOMAINS = ["google.com", "facebook.com", "instagram.com"]
+EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+PHONE_RE = re.compile(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
 
-# --- LOGGING ---
+
 class MemoryHandler(logging.Handler):
-    def __init__(self):
+    def __init__(self, capacity=100):
         super().__init__()
-        self.buffer = []
+        self.buffer = deque(maxlen=capacity)
 
     def emit(self, record):
         self.buffer.append(self.format(record))
-        if len(self.buffer) > 100:
-            self.buffer.pop(0)
+
 
 log_handler = MemoryHandler()
 log = logging.getLogger("scraper")
 log.setLevel(logging.INFO)
-log.addHandler(log_handler)
-log.addHandler(logging.FileHandler(LOG_FILE))
-log.addHandler(logging.StreamHandler())
-logging.getLogger('werkzeug').setLevel(logging.ERROR)
+for h in [log_handler, logging.FileHandler(BASE_DIR / "scraper.log"), logging.StreamHandler()]:
+    log.addHandler(h)
+logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
-# --- SCRAPER ENGINE ---
+
 class Engine:
     def __init__(self):
         self.active = False
-        self.data = []
-        self._load_csv()
-
-    def _load_csv(self):
+        self.data   = []
+        self._lock  = threading.Lock()
         if DB_FILE.exists():
-            with open(DB_FILE, "r", encoding="utf-8") as f:
+            with open(DB_FILE, encoding="utf-8") as f:
                 self.data = list(csv.DictReader(f))
 
     def save(self):
-        fields = ["Company", "Email", "Phone", "Website", "Category", "Address", "Rating", "Reviews", "Maps URL"]
-        tmp = f"{DB_FILE}.tmp"
+        tmp = Path(f"{DB_FILE}.tmp")
         with open(tmp, "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=fields)
+            w = csv.DictWriter(f, fieldnames=FIELDS)
             w.writeheader()
-            w.writerows(self.data)
-        Path(tmp).replace(DB_FILE)
+            with self._lock:
+                w.writerows(self.data)
+        tmp.replace(DB_FILE)
 
     async def run(self, cfg):
         self.active = True
-        log.info("Starting optimized scraper...")
-        terms = [s.strip() for s in cfg["search_terms"].split(",") if s.strip()]
-        locations = [loc.strip() for loc in cfg["locations"].split(",") if loc.strip()]
-        
+        log.info("Starting scraper...")
+        queries = [
+            f"{t.strip()} {loc.strip()}"
+            for t   in cfg["search_terms"].split(",") if t.strip()
+            for loc in cfg["locations"].split(",")    if loc.strip()
+        ]
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=cfg["headless"])
-            for q in [f"{t} {loc}" for t in terms for loc in locations]:
+            for q in queries:
                 if not self.active:
                     break
-                await self.scrape_maps(browser, q, int(cfg.get("max_results", 10)))
-            
-            # High-Concurrency Enrichment
-            sites = [r for r in self.data if r.get("Website") and not r.get("Email")]
+                await self._scrape_maps(browser, q, int(cfg.get("max_results", 10)))
+
+            with self._lock:
+                sites = [r for r in self.data if r.get("Website") and not r.get("Email")]
             if sites and self.active:
                 log.info(f"Enriching {len(sites)} websites...")
                 sem = asyncio.Semaphore(cfg.get("concurrency", 10))
-                await asyncio.gather(*[self.scrape_site(browser, r, sem) for r in sites])
+                await asyncio.gather(*[self._scrape_site(browser, r, sem) for r in sites])
+
             await browser.close()
         self.active = False
         log.info("Job finished.")
 
-    async def scrape_maps(self, browser, q, limit):
-        ctx = await browser.new_context(viewport={'width': 1200, 'height': 800})
+    async def _scrape_maps(self, browser, q, limit):
+        async def text(page, sel):
+            try:
+                return await page.inner_text(sel, timeout=3000)
+            except Exception:
+                return ""
+
+        ctx  = await browser.new_context(viewport={"width": 1200, "height": 800})
         page = await ctx.new_page()
         try:
             log.info(f"Searching: {q}")
-            await page.goto(f"https://www.google.com/maps/search/{q.replace(' ', '+')}", wait_until="domcontentloaded")
-            
-            # Consent Bypass
+            await page.goto(f"https://www.google.com/maps/search/{quote_plus(q)}", wait_until="domcontentloaded")
+
             try:
-                for sel in ["button[aria-label*='Accept']", "button[aria-label*='agree']", "button[aria-label*='Αποδοχή']"]:
-                    btn = await page.query_selector(sel)
-                    if btn:
-                        await btn.click()
-                        break
+                await page.locator(
+                    "button[aria-label*='Accept'], button[aria-label*='agree'], button[aria-label*='Αποδοχή']"
+                ).first.click(timeout=3000)
             except Exception:
                 pass
 
-            await asyncio.sleep(2)
             if "/maps/place/" in page.url:
                 urls = [page.url]
             else:
-                # Optimized Scrolling
-                last_count = 0
+                last = 0
                 for _ in range(20):
                     await page.mouse.wheel(0, 4000)
                     await asyncio.sleep(1.5)
                     found = await page.query_selector_all("a.hfpxzc")
-                    if len(found) == last_count:
+                    if len(found) == last:
                         break
-                    last_count = len(found)
+                    last = len(found)
                     if limit > 0 and len(found) >= limit:
                         break
-                
                 links = await page.query_selector_all("a.hfpxzc")
-                urls = []
-                for link in links:
-                    href = await link.get_attribute("href")
-                    if href:
-                        urls.append(href)
-                
+                urls  = [href for link in links if (href := await link.get_attribute("href"))]
                 if limit > 0:
                     urls = urls[:limit]
 
             log.info(f"Processing {len(urls)} listings...")
+            changed = False
             for url in urls:
                 if not self.active:
                     break
-                if any(r.get("Maps URL") == url for r in self.data):
-                    continue
-                
+                with self._lock:
+                    if any(r.get("Maps URL") == url for r in self.data):
+                        continue
+
                 await page.goto(url, wait_until="domcontentloaded")
                 await page.wait_for_selector("h1.DUwDvf", timeout=5000)
-                
+
                 res = {
-                    "Company": await self._text(page, "h1.DUwDvf"),
-                    "Category": await self._text(page, "button.DkEaL"),
-                    "Address": (await self._text(page, "button[data-item-id='address']")).replace("", "").strip(),
-                    "Phone": (await self._text(page, "button[data-item-id*='phone:tel:']")).replace("", "").strip(),
-                    "Website": "", "Email": "",
-                    "Rating": await self._text(page, "div.F7nice span span[aria-hidden='true']"),
-                    "Reviews": (await self._text(page, "div.F7nice span[aria-label*='reviews']")).strip("()"),
-                    "Maps URL": url
+                    "Company":  await text(page, "h1.DUwDvf"),
+                    "Category": await text(page, "button.DkEaL"),
+                    "Address":  (await text(page, "button[data-item-id='address']")).strip(),
+                    "Phone":    (await text(page, "button[data-item-id*='phone:tel:']")).strip(),
+                    "Website":  "",
+                    "Email":    "",
+                    "Rating":   await text(page, "div.F7nice span span[aria-hidden='true']"),
+                    "Reviews":  (await text(page, "div.F7nice span[aria-label*='reviews']")).strip("()"),
+                    "Maps URL": url,
                 }
-                
-                wb_el = await page.query_selector("a[data-item-id='authority']")
-                if wb_el:
-                    href = await wb_el.get_attribute("href")
-                    if href and not any(d in href.lower() for d in ["google.com", "facebook.com", "instagram.com"]):
+
+                wb = await page.query_selector("a[data-item-id='authority']")
+                if wb and (href := await wb.get_attribute("href")):
+                    if not any(d in href.lower() for d in EXCLUDED_DOMAINS):
                         res["Website"] = href.split("?")[0].rstrip("/")
-                
-                self.data.append(res)
+
+                with self._lock:
+                    self.data.append(res)
+                changed = True
                 log.info(f"Captured: {res['Company']}")
+
+            if changed:
                 self.save()
         finally:
             await ctx.close()
 
-    async def scrape_site(self, browser, res, sem):
+    async def _scrape_site(self, browser, res, sem):
         async with sem:
             if not self.active:
                 return
-            ctx = await browser.new_context()
-            await ctx.route("**/*.{png,jpg,jpeg,gif,webp,svg,css,woff,woff2}", lambda r: r.abort())
+            ctx  = await browser.new_context()
             page = await ctx.new_page()
+            await ctx.route("**/*.{png,jpg,jpeg,gif,webp,svg,css,woff,woff2}", lambda r: r.abort())
             try:
                 await page.goto(res["Website"], timeout=15000)
                 html = await page.content()
-                res["Email"] = self._extract_email(html)
-                if not res["Phone"]:
-                    res["Phone"] = self._extract_phone(html)
+                if m := EMAIL_RE.search(html):
+                    res["Email"] = m.group(0).lower()
+                if not res["Phone"] and (m := PHONE_RE.search(html)):
+                    res["Phone"] = m.group(0)
                 self.save()
             except Exception:
                 pass
             finally:
                 await ctx.close()
 
-    def _extract_email(self, html):
-        m = EMAIL_REGEX.search(html)
-        return m.group(0).lower() if m else ""
-
-    def _extract_phone(self, html):
-        m = PHONE_REGEX.search(html)
-        return m.group(0) if m else ""
-
-    async def _text(self, page, sel):
-        try:
-            return await page.eval_on_selector(sel, "el => el.innerText")
-        except Exception:
-            return ""
 
 engine = Engine()
-app = Flask(__name__)
+app    = Flask(__name__)
 
-def load_cfg():
-    if CFG_FILE.exists():
-        return json.loads(CFG_FILE.read_text())
-    return DEFAULT_CFG
 
 @app.route("/")
 def index():
@@ -210,37 +196,41 @@ def index():
 
 @app.route("/api/status")
 def status():
-    return jsonify({
-        "running": engine.active, 
-        "leads": engine.data, 
-        "logs": log_handler.buffer, 
-        "config": load_cfg()
-    })
+    cfg = json.loads(CFG_FILE.read_text()) if CFG_FILE.exists() else DEFAULT_CFG
+    with engine._lock:
+        leads = list(engine.data)
+    return jsonify({"running": engine.active, "leads": leads, "logs": list(log_handler.buffer), "config": cfg})
 
 @app.route("/control/<action>", methods=["POST"])
 def control(action):
     if action == "start" and not engine.active:
-        threading.Thread(target=lambda: asyncio.run(engine.run(load_cfg()))).start()
+        cfg = json.loads(CFG_FILE.read_text()) if CFG_FILE.exists() else DEFAULT_CFG
+        threading.Thread(target=lambda: asyncio.run(engine.run(cfg)), daemon=True).start()
     elif action == "stop":
         engine.active = False
     elif action == "clear":
-        engine.data = []
-        if DB_FILE.exists():
-            DB_FILE.unlink()
+        with engine._lock:
+            engine.data = []
+        DB_FILE.unlink(missing_ok=True)
         log.info("Results cleared.")
+    else:
+        return jsonify({"error": f"Unknown action: {action}"}), 400
     return jsonify({"success": True})
 
 @app.route("/config", methods=["POST"])
 def save_config():
-    CFG_FILE.write_text(json.dumps(request.json))
+    cfg = request.get_json(silent=True)
+    if not isinstance(cfg, dict):
+        return jsonify({"error": "Invalid JSON body"}), 400
+    CFG_FILE.write_text(json.dumps(cfg))
     return jsonify({"success": True})
 
 @app.route("/download")
 def download():
+    if not DB_FILE.exists():
+        return jsonify({"error": "No data yet"}), 404
     return send_file(DB_FILE, as_attachment=True)
 
+
 if __name__ == "__main__":
-
-    port = int(os.environ.get("PORT", 8000))
-
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
