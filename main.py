@@ -15,18 +15,26 @@ from fastapi.templating import Jinja2Templates
 from playwright.async_api import async_playwright
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_FILE  = BASE_DIR / "contacts.csv"
+DB_FILE = BASE_DIR / "contacts.csv"
 CFG_FILE = BASE_DIR / "config.json"
 
 DEFAULT_CFG = {
-    "search_terms": "Construction", "locations": "Thessaloniki",
+    "search_terms": "", "locations": "",
     "headless": True, "max_results": 10, "concurrency": 10,
 }
+VALID_CFG_KEYS = set(DEFAULT_CFG)
 
-FIELDS           = ["Company", "Email", "Phone", "Website", "Category", "Address", "Rating", "Reviews", "Maps URL"]
-EXCLUDED_DOMAINS = ["google.com", "facebook.com", "instagram.com"]
-EMAIL_RE         = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
-PHONE_RE         = re.compile(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
+FIELDS = ["Company", "Email", "Phone", "Website", "Category", "Address", "Rating", "Reviews", "Maps URL"]
+EXCLUDED_DOMAINS = {"google.com", "facebook.com", "instagram.com"}
+EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+PHONE_RE = re.compile(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
+CONSENT_SELECTORS = "button[aria-label*='Accept'], button[aria-label*='agree'], button[aria-label*='Αποδοχή']"
+
+
+def load_config():
+    if CFG_FILE.exists():
+        return json.loads(CFG_FILE.read_text())
+    return dict(DEFAULT_CFG)
 
 
 class MemoryHandler(logging.Handler):
@@ -49,13 +57,15 @@ logging.getLogger("uvicorn.access").setLevel(logging.ERROR)
 class Engine:
     def __init__(self):
         self.active = False
-        self.data   = []
-        self._lock  = asyncio.Lock()
+        self.data: list[dict] = []
+        self._seen_urls: set[str] = set()
+        self._lock = asyncio.Lock()
         if DB_FILE.exists():
             with open(DB_FILE, encoding="utf-8") as f:
                 self.data = list(csv.DictReader(f))
+            self._seen_urls = {r.get("Maps URL", "") for r in self.data}
 
-    def save(self):
+    def _save(self):
         tmp = Path(f"{DB_FILE}.tmp")
         with open(tmp, "w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=FIELDS)
@@ -68,9 +78,14 @@ class Engine:
         log.info("Starting scraper...")
         queries = [
             f"{t.strip()} {loc.strip()}"
-            for t   in cfg["search_terms"].split(",") if t.strip()
-            for loc in cfg["locations"].split(",")    if loc.strip()
+            for t in cfg["search_terms"].split(",") if t.strip()
+            for loc in cfg["locations"].split(",") if loc.strip()
         ]
+        if not queries:
+            log.info("No search queries configured.")
+            self.active = False
+            return
+
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=cfg["headless"])
             for q in queries:
@@ -84,28 +99,32 @@ class Engine:
                 log.info(f"Enriching {len(sites)} websites...")
                 sem = asyncio.Semaphore(cfg.get("concurrency", 10))
                 await asyncio.gather(*[self._scrape_site(browser, r, sem) for r in sites])
+                async with self._lock:
+                    self._save()
 
             await browser.close()
         self.active = False
         log.info("Job finished.")
 
     async def _scrape_maps(self, browser, q, limit):
-        async def text(page, sel):
+        async def text(sel):
             try:
-                return await page.inner_text(sel, timeout=3000)
+                return (await page.inner_text(sel, timeout=3000)).strip()
             except Exception:
                 return ""
 
-        ctx  = await browser.new_context(viewport={"width": 1200, "height": 800})
+        ctx = await browser.new_context(viewport={"width": 1200, "height": 800})
         page = await ctx.new_page()
         try:
             log.info(f"Searching: {q}")
-            await page.goto(f"https://www.google.com/maps/search/{quote_plus(q)}", wait_until="domcontentloaded")
+            try:
+                await page.goto(f"https://www.google.com/maps/search/{quote_plus(q)}", wait_until="domcontentloaded")
+            except Exception as e:
+                log.warning(f"Failed to load Maps for '{q}': {e}")
+                return
 
             try:
-                await page.locator(
-                    "button[aria-label*='Accept'], button[aria-label*='agree'], button[aria-label*='Αποδοχή']"
-                ).first.click(timeout=3000)
+                await page.locator(CONSENT_SELECTORS).first.click(timeout=3000)
             except Exception:
                 pass
 
@@ -123,7 +142,7 @@ class Engine:
                     if limit > 0 and len(found) >= limit:
                         break
                 links = await page.query_selector_all("a.hfpxzc")
-                urls  = [href for link in links if (href := await link.get_attribute("href"))]
+                urls = [href for link in links if (href := await link.get_attribute("href"))]
                 if limit > 0:
                     urls = urls[:limit]
 
@@ -133,21 +152,26 @@ class Engine:
                 if not self.active:
                     break
                 async with self._lock:
-                    if any(r.get("Maps URL") == url for r in self.data):
+                    if url in self._seen_urls:
                         continue
+                    self._seen_urls.add(url)
 
-                await page.goto(url, wait_until="domcontentloaded")
-                await page.wait_for_selector("h1.DUwDvf", timeout=5000)
+                try:
+                    await page.goto(url, wait_until="domcontentloaded")
+                    await page.wait_for_selector("h1.DUwDvf", timeout=5000)
+                except Exception as e:
+                    log.warning(f"Failed to load listing: {e}")
+                    continue
 
                 res = {
-                    "Company":  await text(page, "h1.DUwDvf"),
-                    "Category": await text(page, "button.DkEaL"),
-                    "Address":  (await text(page, "button[data-item-id='address']")).strip(),
-                    "Phone":    (await text(page, "button[data-item-id*='phone:tel:']")).strip(),
-                    "Website":  "",
-                    "Email":    "",
-                    "Rating":   await text(page, "div.F7nice span span[aria-hidden='true']"),
-                    "Reviews":  (await text(page, "div.F7nice span[aria-label*='reviews']")).strip("()"),
+                    "Company": await text("h1.DUwDvf"),
+                    "Category": await text("button.DkEaL"),
+                    "Address": await text("button[data-item-id='address']"),
+                    "Phone": await text("button[data-item-id*='phone:tel:']"),
+                    "Website": "",
+                    "Email": "",
+                    "Rating": await text("div.F7nice span span[aria-hidden='true']"),
+                    "Reviews": (await text("div.F7nice span[aria-label*='reviews']")).strip("()"),
                     "Maps URL": url,
                 }
 
@@ -162,7 +186,8 @@ class Engine:
                 log.info(f"Captured: {res['Company']}")
 
             if changed:
-                self.save()
+                async with self._lock:
+                    self._save()
         finally:
             await ctx.close()
 
@@ -170,7 +195,7 @@ class Engine:
         async with sem:
             if not self.active:
                 return
-            ctx  = await browser.new_context()
+            ctx = await browser.new_context()
             page = await ctx.new_page()
             await ctx.route("**/*.{png,jpg,jpeg,gif,webp,svg,css,woff,woff2}", lambda r: r.abort())
             try:
@@ -180,15 +205,14 @@ class Engine:
                     res["Email"] = m.group(0).lower()
                 if not res["Phone"] and (m := PHONE_RE.search(html)):
                     res["Phone"] = m.group(0)
-                self.save()
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug(f"Failed enriching {res.get('Website')}: {e}")
             finally:
                 await ctx.close()
 
 
-engine    = Engine()
-app       = FastAPI()
+engine = Engine()
+app = FastAPI()
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
@@ -202,21 +226,20 @@ async def index(request: Request):
 async def status():
     async with engine._lock:
         leads = list(engine.data)
-    cfg = json.loads(CFG_FILE.read_text()) if CFG_FILE.exists() else DEFAULT_CFG
-    return {"running": engine.active, "leads": leads, "logs": list(log_handler.buffer), "config": cfg}
+    return {"running": engine.active, "leads": leads, "logs": list(log_handler.buffer), "config": load_config()}
 
 
 @app.post("/control/{action}")
 async def control(action: str):
     if action == "start" and not engine.active:
-        asyncio.create_task(engine.run(
-            json.loads(CFG_FILE.read_text()) if CFG_FILE.exists() else DEFAULT_CFG
-        ))
+        task = asyncio.create_task(engine.run(load_config()))
+        task.add_done_callback(lambda t: log.error(f"Scraper crashed: {t.exception()}") if t.exception() else None)
     elif action == "stop":
         engine.active = False
     elif action == "clear":
         async with engine._lock:
             engine.data = []
+            engine._seen_urls.clear()
         DB_FILE.unlink(missing_ok=True)
         log.info("Results cleared.")
     else:
@@ -229,7 +252,11 @@ async def save_config(request: Request):
     cfg = await request.json()
     if not isinstance(cfg, dict):
         return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
-    CFG_FILE.write_text(json.dumps(cfg))
+    # Only allow known keys
+    cleaned = {k: cfg[k] for k in VALID_CFG_KEYS if k in cfg}
+    if not cleaned:
+        return JSONResponse({"error": "No valid config keys provided"}, status_code=400)
+    CFG_FILE.write_text(json.dumps(cleaned))
     return {"success": True}
 
 
@@ -242,4 +269,4 @@ async def download():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("PORT", 8000)))
