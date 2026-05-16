@@ -20,15 +20,31 @@ CFG_FILE = BASE_DIR / "config.json"
 
 DEFAULT_CFG = {
     "search_terms": "", "locations": "",
-    "headless": True, "max_results": 10, "concurrency": 10,
+    "headless": True, "max_results": 10, "concurrency": 3,
 }
-VALID_CFG_KEYS = set(DEFAULT_CFG)
 
 FIELDS = ["Company", "Email", "Phone", "Website", "Category", "Address", "Rating", "Reviews", "Maps URL"]
 EXCLUDED_DOMAINS = {"google.com", "facebook.com", "instagram.com"}
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 PHONE_RE = re.compile(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
 CONSENT_SELECTORS = "button[aria-label*='Accept'], button[aria-label*='agree'], button[aria-label*='Αποδοχή']"
+
+CHROMIUM_ARGS = [
+    "--disable-gpu",
+    "--disable-dev-shm-usage",
+    "--disable-extensions",
+    "--no-sandbox",
+    "--disable-background-networking",
+    "--disable-default-apps",
+    "--disable-sync",
+    "--disable-translate",
+    "--metrics-recording-only",
+    "--no-first-run",
+    "--single-process",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+    "--disable-component-update",
+]
 
 
 def load_config():
@@ -38,7 +54,7 @@ def load_config():
 
 
 class MemoryHandler(logging.Handler):
-    def __init__(self, capacity=100):
+    def __init__(self, capacity=50):
         super().__init__()
         self.buffer = deque(maxlen=capacity)
 
@@ -86,8 +102,13 @@ class Engine:
             self.active = False
             return
 
+        concurrency = min(int(cfg.get("concurrency", 3)), 3)
+
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=cfg["headless"])
+            browser = await p.chromium.launch(
+                headless=cfg["headless"],
+                args=CHROMIUM_ARGS,
+            )
             for q in queries:
                 if not self.active:
                     break
@@ -97,7 +118,7 @@ class Engine:
                 sites = [r for r in self.data if r.get("Website") and not r.get("Email")]
             if sites and self.active:
                 log.info(f"Enriching {len(sites)} websites...")
-                sem = asyncio.Semaphore(cfg.get("concurrency", 10))
+                sem = asyncio.Semaphore(concurrency)
                 await asyncio.gather(*[self._scrape_site(browser, r, sem) for r in sites])
                 async with self._lock:
                     self._save()
@@ -197,7 +218,7 @@ class Engine:
                 return
             ctx = await browser.new_context()
             page = await ctx.new_page()
-            await ctx.route("**/*.{png,jpg,jpeg,gif,webp,svg,css,woff,woff2}", lambda r: r.abort())
+            await ctx.route("**/*.{png,jpg,jpeg,gif,webp,svg,css,woff,woff2,mp4,webm}", lambda r: r.abort())
             try:
                 await page.goto(res["Website"], timeout=15000)
                 html = await page.content()
@@ -219,7 +240,7 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 
 @app.get("/")
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
 
 
 @app.get("/api/status")
@@ -252,8 +273,7 @@ async def save_config(request: Request):
     cfg = await request.json()
     if not isinstance(cfg, dict):
         return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
-    # Only allow known keys
-    cleaned = {k: cfg[k] for k in VALID_CFG_KEYS if k in cfg}
+    cleaned = {k: cfg[k] for k in DEFAULT_CFG if k in cfg}
     if not cleaned:
         return JSONResponse({"error": "No valid config keys provided"}, status_code=400)
     CFG_FILE.write_text(json.dumps(cleaned))

@@ -8,30 +8,26 @@
     <script>tailwind = { darkMode: 'media', theme: { extend: { fontFamily: { mono: ['JetBrains Mono', 'ui-monospace', 'monospace'] } } } }</script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://unpkg.com/alpinejs@3.14.3/dist/cdn.min.js"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         [x-cloak]{display:none!important}
-        .input{@apply w-full bg-transparent border border-zinc-200 dark:border-zinc-800 rounded px-3 py-2 text-xs outline-none focus:border-zinc-400 dark:focus:border-zinc-600 transition-colors placeholder-zinc-300 dark:placeholder-zinc-700}
-        .btn-secondary{@apply px-3 py-1.5 text-xs font-medium border border-zinc-200 dark:border-zinc-800 rounded hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors text-zinc-500}
+        .input{@apply w-full bg-transparent border border-zinc-200 dark:border-zinc-800 rounded px-3 py-2 text-xs outline-none focus:border-zinc-400 dark:focus:border-zinc-600 placeholder-zinc-300 dark:placeholder-zinc-700}
+        .btn{@apply px-3 py-1.5 text-xs font-medium border border-zinc-200 dark:border-zinc-800 rounded hover:bg-zinc-50 dark:hover:bg-zinc-900 text-zinc-500}
     </style>
 </head>
 <body class="font-mono bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 h-screen flex overflow-hidden"
     x-data="app()" x-init="init()">
 
-<div x-show="sidebarOpen && isMobile" x-cloak @click="sidebarOpen = false"
-    x-transition:enter="transition duration-150" x-transition:leave="transition duration-100"
-    class="fixed inset-0 bg-black/40 z-20"></div>
+<div x-show="sidebarOpen && isMobile" x-cloak @click="sidebarOpen = false" class="fixed inset-0 bg-black/40 z-20"></div>
 
-<aside id="sidebar" class="shrink-0 border-r border-zinc-200 dark:border-zinc-800 flex flex-col h-full bg-white dark:bg-zinc-950 transition-all duration-200 overflow-hidden"
+<aside id="sidebar" class="shrink-0 border-r border-zinc-200 dark:border-zinc-800 flex flex-col h-full bg-white dark:bg-zinc-950 overflow-hidden"
     :class="isMobile
-        ? (sidebarOpen ? 'fixed inset-y-0 left-0 z-30 w-52' : 'fixed inset-y-0 left-0 z-30 w-52 -translate-x-full')
+        ? (sidebarOpen ? 'fixed inset-y-0 left-0 z-30 w-52' : 'fixed -translate-x-full inset-y-0 left-0 z-30 w-52')
         : (sidebarOpen ? 'w-52' : 'w-12')">
 
-    <div class="h-14 flex items-center border-b border-zinc-200 dark:border-zinc-800 shrink-0 transition-all duration-200"
-        :class="sidebarOpen ? 'px-3' : 'justify-center'">
-        <div class="flex items-center gap-2.5 min-w-0">
-            <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <div class="h-14 flex items-center border-b border-zinc-200 dark:border-zinc-800 shrink-0" :class="sidebarOpen ? 'px-3' : 'justify-center'">
+        <div class="flex items-center gap-2.5">
+            <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none">
                 <path d="M12 2C8.686 2 6 4.686 6 8c0 4.418 6 12 6 12s6-7.582 6-12c0-3.314-2.686-6-6-6z" fill="currentColor"/>
                 <circle cx="12" cy="8" r="2.25" fill="white"/>
             </svg>
@@ -41,44 +37,29 @@
 
     <nav class="flex flex-col gap-0.5 p-2 flex-1">
         <button @click="tab = 'dashboard'; if (isMobile) sidebarOpen = false"
-            :class="tab === 'dashboard' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-zinc-900'"
-            :title="sidebarOpen ? '' : 'Dashboard'"
-            class="flex items-center gap-2.5 px-2.5 py-2.5 rounded text-xs font-medium text-left transition-colors">
-            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M3 7h18M3 12h18M3 17h18"/>
-            </svg>
-            <span x-show="sidebarOpen" x-cloak class="whitespace-nowrap">Dashboard</span>
+            :class="tab === 'dashboard' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100'"
+            class="flex items-center gap-2.5 px-2.5 py-2.5 rounded text-xs font-medium text-left">
+            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7h18M3 12h18M3 17h18"/></svg>
+            <span x-show="sidebarOpen" x-cloak>Dashboard</span>
         </button>
         <button @click="tab = 'config'; if (isMobile) sidebarOpen = false"
-            :class="tab === 'config' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-zinc-900'"
-            :title="sidebarOpen ? '' : 'Settings'"
-            class="flex items-center gap-2.5 px-2.5 py-2.5 rounded text-xs font-medium text-left transition-colors">
-            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-            </svg>
-            <span x-show="sidebarOpen" x-cloak class="whitespace-nowrap">Settings</span>
+            :class="tab === 'config' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100'"
+            class="flex items-center gap-2.5 px-2.5 py-2.5 rounded text-xs font-medium text-left">
+            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+            <span x-show="sidebarOpen" x-cloak>Settings</span>
         </button>
     </nav>
 
     <div class="p-2 border-t border-zinc-200 dark:border-zinc-800 space-y-1">
-        <div class="flex items-center gap-2.5 px-2.5 py-2"
-            :title="sidebarOpen ? '' : (running ? 'Running' : 'Idle') + ' — ' + leads.length + ' leads'">
-            <div class="w-4 h-4 flex items-center justify-center shrink-0">
-                <div class="w-1.5 h-1.5 rounded-full" :class="running ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-300 dark:bg-zinc-700'"></div>
-            </div>
-            <span x-show="sidebarOpen" x-cloak class="text-xs text-zinc-500 whitespace-nowrap" x-text="running ? 'Running' : 'Idle'"></span>
+        <div class="flex items-center gap-2.5 px-2.5 py-2">
+            <div class="w-1.5 h-1.5 rounded-full" :class="running ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-300 dark:bg-zinc-700'"></div>
+            <span x-show="sidebarOpen" x-cloak class="text-xs text-zinc-500" x-text="running ? 'Running' : 'Idle'"></span>
             <span x-show="sidebarOpen" x-cloak class="ml-auto text-xs font-medium" x-text="leads.length"></span>
         </div>
         <button @click="sidebarOpen = !sidebarOpen" x-show="!isMobile"
-            :aria-expanded="sidebarOpen" aria-controls="sidebar"
-            :title="sidebarOpen ? 'Collapse' : 'Expand'"
-            class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded text-xs text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors">
-            <svg class="w-4 h-4 shrink-0 transition-transform duration-200" :class="sidebarOpen ? '' : 'rotate-180'"
-                fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7M19 19l-7-7 7-7"/>
-            </svg>
-            <span x-show="sidebarOpen" x-cloak class="whitespace-nowrap">Collapse</span>
+            class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded text-xs text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100">
+            <svg class="w-4 h-4 shrink-0" :class="sidebarOpen ? '' : 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7M19 19l-7-7 7-7"/></svg>
+            <span x-show="sidebarOpen" x-cloak>Collapse</span>
         </button>
     </div>
 </aside>
@@ -87,27 +68,21 @@
 
     <div x-show="tab === 'dashboard'" x-cloak class="flex flex-col flex-1 overflow-hidden">
         <div class="border-b border-zinc-200 dark:border-zinc-800 flex flex-wrap items-center gap-2 px-4 py-2 shrink-0">
-            <button @click="sidebarOpen = true" x-show="isMobile" aria-label="Open menu"
-                class="p-1.5 rounded text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
-                </svg>
+            <button @click="sidebarOpen = true" x-show="isMobile" aria-label="Open menu" class="p-1.5 rounded text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
             </button>
             <button @click="control('start')" x-show="!running"
-                class="px-3 py-1.5 text-xs font-medium bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded hover:opacity-80 transition-opacity">Start</button>
-            <button @click="control('stop')" x-show="running"
-                class="px-3 py-1.5 text-xs font-medium border border-zinc-300 dark:border-zinc-700 rounded hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors text-zinc-700 dark:text-zinc-300">Stop</button>
-            <button @click="exportCsv()" class="btn-secondary">Export</button>
-            <button @click="showClearConfirm = !showClearConfirm" class="btn-secondary">Clear</button>
+                class="px-3 py-1.5 text-xs font-medium bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded hover:opacity-80">Start</button>
+            <button @click="control('stop')" x-show="running" class="btn">Stop</button>
+            <button @click="exportCsv()" class="btn">Export</button>
+            <button @click="showClearConfirm = !showClearConfirm" class="btn">Clear</button>
             <div x-show="showClearConfirm" x-cloak class="flex items-center gap-2">
                 <span class="text-xs text-zinc-500">Delete all?</span>
-                <button @click="control('clear'); showClearConfirm = false"
-                    class="px-2 py-1 text-xs font-medium text-red-600 border border-red-200 dark:border-red-800 rounded hover:bg-red-50 dark:hover:bg-red-950 transition-colors">Yes</button>
-                <button @click="showClearConfirm = false"
-                    class="px-2 py-1 text-xs text-zinc-500 border border-zinc-200 dark:border-zinc-700 rounded hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors">No</button>
+                <button @click="control('clear'); showClearConfirm = false" class="px-2 py-1 text-xs font-medium text-red-600 border border-red-200 dark:border-red-800 rounded">Yes</button>
+                <button @click="showClearConfirm = false" class="px-2 py-1 text-xs text-zinc-500 border border-zinc-200 dark:border-zinc-700 rounded">No</button>
             </div>
             <input type="text" x-model="search" placeholder="Filter..." aria-label="Filter leads"
-                class="ml-auto bg-transparent border border-zinc-200 dark:border-zinc-800 rounded px-3 py-1.5 text-xs outline-none focus:border-zinc-400 dark:focus:border-zinc-600 transition-colors w-28 sm:w-48 placeholder-zinc-400">
+                class="ml-auto bg-transparent border border-zinc-200 dark:border-zinc-800 rounded px-3 py-1.5 text-xs outline-none focus:border-zinc-400 dark:focus:border-zinc-600 w-28 sm:w-48 placeholder-zinc-400">
         </div>
 
         <div class="flex-1 overflow-auto min-h-0">
@@ -124,43 +99,27 @@
                 </thead>
                 <tbody class="divide-y divide-zinc-100 dark:divide-zinc-900">
                     <template x-for="lead in filteredLeads" :key="lead['Maps URL']">
-                        <tr class="hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors">
+                        <tr class="hover:bg-zinc-50 dark:hover:bg-zinc-900/50">
                             <td class="px-4 py-2.5">
-                                <div class="font-medium text-zinc-900 dark:text-zinc-100 truncate max-w-[180px]" x-text="lead.Company"></div>
+                                <div class="font-medium truncate max-w-[180px]" x-text="lead.Company"></div>
                                 <div class="text-zinc-400 text-[10px] truncate max-w-[180px]" x-text="lead.Address"></div>
                             </td>
                             <td class="px-4 py-2.5">
-                                <a x-show="lead.Email" :href="'mailto:' + lead.Email"
-                                    class="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors truncate block max-w-[160px]"
-                                    x-text="lead.Email"></a>
+                                <a x-show="lead.Email" :href="'mailto:' + lead.Email" class="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 truncate block max-w-[160px]" x-text="lead.Email"></a>
                             </td>
                             <td class="px-4 py-2.5 text-zinc-500 whitespace-nowrap" x-text="lead.Phone"></td>
                             <td class="px-4 py-2.5 text-zinc-500 truncate max-w-[120px]" x-text="lead.Category"></td>
                             <td class="px-4 py-2.5 whitespace-nowrap text-zinc-500">
-                                <span x-show="lead.Rating">
-                                    <span x-text="lead.Rating"></span>
-                                    <span class="text-zinc-400 dark:text-zinc-600" x-text="lead.Reviews ? '(' + lead.Reviews + ')' : ''"></span>
-                                </span>
+                                <span x-show="lead.Rating"><span x-text="lead.Rating"></span> <span class="text-zinc-400" x-text="lead.Reviews ? '(' + lead.Reviews + ')' : ''"></span></span>
                             </td>
                             <td class="px-4 py-2.5 text-right whitespace-nowrap">
-                                <a :href="lead.Website" target="_blank" x-show="lead.Website" aria-label="Visit website"
-                                    class="inline-block text-zinc-300 dark:text-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors mr-2">
-                                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                                    </svg>
-                                </a>
-                                <a :href="lead['Maps URL']" target="_blank" x-show="lead['Maps URL']" aria-label="View on Google Maps"
-                                    class="inline-block text-zinc-300 dark:text-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors">
-                                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                    </svg>
-                                </a>
+                                <a :href="lead.Website" target="_blank" x-show="lead.Website" aria-label="Website" class="inline-block text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 mr-2">↗</a>
+                                <a :href="lead['Maps URL']" target="_blank" x-show="lead['Maps URL']" aria-label="Maps" class="inline-block text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100">📍</a>
                             </td>
                         </tr>
                     </template>
                     <tr x-show="filteredLeads.length === 0">
-                        <td colspan="6" class="px-4 py-12 text-center text-zinc-400 dark:text-zinc-600 text-xs"
+                        <td colspan="6" class="px-4 py-12 text-center text-zinc-400 text-xs"
                             x-text="search ? 'No results match your filter.' : 'No leads yet. Start the scraper to begin.'"></td>
                     </tr>
                 </tbody>
@@ -168,8 +127,7 @@
         </div>
 
         <div :style="'height:' + logHeight + 'px'" class="border-t border-zinc-200 dark:border-zinc-800 shrink-0 flex flex-col" style="min-height:60px;max-height:70vh">
-            <div @mousedown="startResize($event)" @touchstart.passive="startResize($event)"
-                class="h-1.5 cursor-ns-resize hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors shrink-0"></div>
+            <div @mousedown="startResize($event)" @touchstart.passive="startResize($event)" class="h-1.5 cursor-ns-resize hover:bg-zinc-200 dark:hover:bg-zinc-800 shrink-0"></div>
             <div class="px-4 py-1.5 border-b border-zinc-100 dark:border-zinc-900 flex items-center gap-2 shrink-0">
                 <div class="w-1.5 h-1.5 rounded-full" :class="running ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-300 dark:bg-zinc-700'"></div>
                 <span class="text-[10px] text-zinc-400 uppercase tracking-widest">Log</span>
@@ -207,17 +165,13 @@
                         <p class="text-xs font-medium">Headless Mode</p>
                         <p class="text-[10px] text-zinc-400 mt-0.5">Hide the browser window while scraping.</p>
                     </div>
-                    <button @click="config.headless = !config.headless" role="switch" :aria-checked="config.headless" aria-label="Toggle headless mode"
+                    <button @click="config.headless = !config.headless" role="switch" :aria-checked="config.headless"
                         :class="config.headless ? 'bg-zinc-900 dark:bg-zinc-100' : 'bg-zinc-200 dark:bg-zinc-800'"
-                        class="w-10 h-5 rounded-full relative transition-colors shrink-0">
-                        <div :class="config.headless ? 'translate-x-5' : 'translate-x-0.5'"
-                            class="w-4 h-4 bg-white rounded-full absolute top-0.5 transition-transform"></div>
+                        class="w-10 h-5 rounded-full relative shrink-0">
+                        <div :class="config.headless ? 'translate-x-5' : 'translate-x-0.5'" class="w-4 h-4 bg-white rounded-full absolute top-0.5 transition-transform"></div>
                     </button>
                 </div>
-                <button @click="saveConfig()"
-                    class="px-4 py-2 text-xs font-medium bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded hover:opacity-80 transition-opacity">
-                    Save Settings
-                </button>
+                <button @click="saveConfig()" class="px-4 py-2 text-xs font-medium bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded hover:opacity-80">Save Settings</button>
             </div>
         </div>
     </div>
@@ -226,11 +180,9 @@
 
 <div class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
     <template x-for="t in $store.toasts.list" :key="t.id">
-        <div x-show="t.visible"
-            x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0"
-            x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
-            :class="t.type === 'error' ? 'bg-white dark:bg-zinc-900 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400' : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300'"
-            class="pointer-events-auto px-4 py-3 rounded border text-xs font-medium shadow-sm"
+        <div x-show="t.visible" x-transition
+            :class="t.type === 'error' ? 'border-red-200 dark:border-red-800 text-red-600' : 'border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300'"
+            class="pointer-events-auto px-4 py-3 rounded border text-xs font-medium shadow-sm bg-white dark:bg-zinc-900"
             x-text="t.msg"></div>
     </template>
 </div>
@@ -238,28 +190,17 @@
 <script>
 function app() {
     return {
-        tab: 'dashboard',
-        running: false,
-        leads: [],
-        logLines: [],
-        search: '',
-        showClearConfirm: false,
-        sidebarOpen: false,
-        isMobile: window.innerWidth < 768,
-        logHeight: 144,
-        config: {},
-        _pollFails: 0,
+        tab: 'dashboard', running: false, leads: [], logLines: [], search: '',
+        showClearConfirm: false, sidebarOpen: false, isMobile: window.innerWidth < 768,
+        logHeight: 144, config: {}, _pollFails: 0,
 
         init() {
             Alpine.store('toasts', {
                 list: [], _id: 0,
-                show(msg, type = 'info', duration = 3000) {
+                show(msg, type = 'info', ms = 3000) {
                     const t = { id: ++this._id, msg, type, visible: true };
                     this.list.push(t);
-                    setTimeout(() => {
-                        t.visible = false;
-                        setTimeout(() => this.list.splice(this.list.indexOf(t), 1), 200);
-                    }, duration);
+                    setTimeout(() => { t.visible = false; setTimeout(() => this.list.splice(this.list.indexOf(t), 1), 200); }, ms);
                 }
             });
             window.addEventListener('resize', () => {
@@ -278,36 +219,20 @@ function app() {
         async poll() {
             try {
                 const d = await fetch('/api/status').then(r => r.json());
-                this.running = d.running;
-                this.leads = d.leads;
-                this.logLines = d.logs;
-                this.config = d.config;
+                Object.assign(this, { running: d.running, leads: d.leads, logLines: d.logs, config: d.config });
                 this._pollFails = 0;
-                this.$nextTick(() => {
-                    const el = this.$refs.logs;
-                    if (el) el.scrollTop = el.scrollHeight;
-                });
-            } catch {
-                this._pollFails++;
-                if (this._pollFails === 3) {
-                    Alpine.store('toasts').show('Connection lost. Retrying...', 'error');
-                }
-            }
+                this.$nextTick(() => { const el = this.$refs.logs; if (el) el.scrollTop = el.scrollHeight; });
+            } catch { if (++this._pollFails === 3) Alpine.store('toasts').show('Connection lost. Retrying...', 'error'); }
         },
 
-        async control(action) {
-            await fetch(`/control/${action}`, { method: 'POST' });
-            await this.poll();
-        },
+        async control(action) { await fetch(`/control/${action}`, { method: 'POST' }); await this.poll(); },
 
         async exportCsv() {
             const res = await fetch('/download');
             if (!res.ok) { Alpine.store('toasts').show('No data to export yet.', 'error'); return; }
-            const url = URL.createObjectURL(await res.blob());
             const a = document.createElement('a');
-            a.href = url; a.download = 'contacts.csv';
-            document.body.appendChild(a); a.click(); a.remove();
-            URL.revokeObjectURL(url);
+            a.href = URL.createObjectURL(await res.blob()); a.download = 'contacts.csv';
+            a.click(); URL.revokeObjectURL(a.href);
             Alpine.store('toasts').show('CSV downloaded.');
         },
 
@@ -317,28 +242,13 @@ function app() {
         },
 
         startResize(e) {
-            const touch = e.touches?.[0];
-            const startY = touch ? touch.clientY : e.clientY;
-            const startH = this.logHeight;
+            const startY = e.touches?.[0]?.clientY ?? e.clientY, startH = this.logHeight;
             const clamp = h => Math.max(60, Math.min(window.innerHeight * 0.7, h));
             const getY = e => e.touches ? e.touches[0].clientY : e.clientY;
             const onMove = e => this.logHeight = clamp(startH - (getY(e) - startY));
-            const onUp = () => {
-                window.removeEventListener('mousemove', onMove);
-                window.removeEventListener('mouseup', onUp);
-                window.removeEventListener('touchmove', onMove);
-                window.removeEventListener('touchend', onUp);
-                document.body.style.cursor = document.body.style.userSelect = '';
-            };
-            if (touch) {
-                window.addEventListener('touchmove', onMove, { passive: true });
-                window.addEventListener('touchend', onUp);
-            } else {
-                document.body.style.cursor = 'ns-resize';
-                document.body.style.userSelect = 'none';
-                window.addEventListener('mousemove', onMove);
-                window.addEventListener('mouseup', onUp);
-            }
+            const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); window.removeEventListener('touchmove', onMove); window.removeEventListener('touchend', onUp); document.body.style.cursor = document.body.style.userSelect = ''; };
+            if (e.touches) { window.addEventListener('touchmove', onMove, { passive: true }); window.addEventListener('touchend', onUp); }
+            else { document.body.style.cursor = 'ns-resize'; document.body.style.userSelect = 'none'; window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp); }
         },
 
         get filteredLeads() {
