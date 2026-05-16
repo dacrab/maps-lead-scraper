@@ -11,178 +11,177 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         [x-cloak]{display:none!important}
-        .input{@apply w-full bg-transparent border border-zinc-200 dark:border-zinc-800 rounded px-3 py-2 text-xs outline-none focus:border-zinc-400 dark:focus:border-zinc-600 placeholder-zinc-300 dark:placeholder-zinc-700}
-        .btn{@apply px-3 py-1.5 text-xs font-medium border border-zinc-200 dark:border-zinc-800 rounded hover:bg-zinc-50 dark:hover:bg-zinc-900 text-zinc-500}
     </style>
 </head>
-<body class="font-mono bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 h-screen flex overflow-hidden"
-    x-data="app()" x-init="init()">
+<body class="font-mono bg-zinc-950 text-zinc-100 h-screen flex flex-col overflow-hidden" x-data="app()" x-init="init()">
 
-<div x-show="sidebarOpen && isMobile" x-cloak @click="sidebarOpen = false" class="fixed inset-0 bg-black/40 z-20"></div>
-
-<aside id="sidebar" class="shrink-0 border-r border-zinc-200 dark:border-zinc-800 flex flex-col h-full bg-white dark:bg-zinc-950 overflow-hidden"
-    :class="isMobile
-        ? (sidebarOpen ? 'fixed inset-y-0 left-0 z-30 w-52' : 'fixed -translate-x-full inset-y-0 left-0 z-30 w-52')
-        : (sidebarOpen ? 'w-52' : 'w-12')">
-
-    <div class="h-14 flex items-center border-b border-zinc-200 dark:border-zinc-800 shrink-0" :class="sidebarOpen ? 'px-3' : 'justify-center'">
-        <div class="flex items-center gap-2.5">
-            <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none">
-                <path d="M12 2C8.686 2 6 4.686 6 8c0 4.418 6 12 6 12s6-7.582 6-12c0-3.314-2.686-6-6-6z" fill="currentColor"/>
-                <circle cx="12" cy="8" r="2.25" fill="white"/>
-            </svg>
-            <span x-show="sidebarOpen" x-cloak class="text-sm font-bold tracking-tight whitespace-nowrap">Lead Scraper</span>
-        </div>
+<!-- Top bar -->
+<header class="h-11 border-b border-zinc-800 flex items-center gap-3 px-4 shrink-0">
+    <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-zinc-400" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2C8.686 2 6 4.686 6 8c0 4.418 6 12 6 12s6-7.582 6-12c0-3.314-2.686-6-6-6z" fill="currentColor"/>
+            <circle cx="12" cy="8" r="2.25" fill="#09090b"/>
+        </svg>
+        <span class="text-xs font-bold tracking-tight text-zinc-300 hidden sm:block">Lead Scraper</span>
     </div>
 
-    <nav class="flex flex-col gap-0.5 p-2 flex-1">
-        <button @click="tab = 'dashboard'; if (isMobile) sidebarOpen = false"
-            :class="tab === 'dashboard' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100'"
-            class="flex items-center gap-2.5 px-2.5 py-2.5 rounded text-xs font-medium text-left">
-            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7h18M3 12h18M3 17h18"/></svg>
-            <span x-show="sidebarOpen" x-cloak>Dashboard</span>
-        </button>
-        <button @click="tab = 'config'; if (isMobile) sidebarOpen = false"
-            :class="tab === 'config' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100'"
-            class="flex items-center gap-2.5 px-2.5 py-2.5 rounded text-xs font-medium text-left">
-            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-            <span x-show="sidebarOpen" x-cloak>Settings</span>
-        </button>
-    </nav>
+    <div class="h-4 w-px bg-zinc-800 hidden sm:block"></div>
 
-    <div class="p-2 border-t border-zinc-200 dark:border-zinc-800 space-y-1">
-        <div class="flex items-center gap-2.5 px-2.5 py-2">
-            <div class="w-1.5 h-1.5 rounded-full" :class="running ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-300 dark:bg-zinc-700'"></div>
-            <span x-show="sidebarOpen" x-cloak class="text-xs text-zinc-500" x-text="running ? 'Running' : 'Idle'"></span>
-            <span x-show="sidebarOpen" x-cloak class="ml-auto text-xs font-medium" x-text="leads.length"></span>
+    <div class="flex items-center gap-1.5">
+        <button @click="control('start')" x-show="!running" class="px-2.5 py-1 text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded hover:bg-emerald-500/20">▶ Start</button>
+        <button @click="control('stop')" x-show="running" class="px-2.5 py-1 text-[11px] font-medium bg-red-500/10 text-red-400 border border-red-500/20 rounded hover:bg-red-500/20">■ Stop</button>
+        <button @click="exportCsv()" class="px-2.5 py-1 text-[11px] font-medium text-zinc-500 border border-zinc-800 rounded hover:text-zinc-300 hover:border-zinc-700">Export</button>
+        <button @click="showClearConfirm = !showClearConfirm" class="px-2.5 py-1 text-[11px] font-medium text-zinc-500 border border-zinc-800 rounded hover:text-zinc-300 hover:border-zinc-700">Clear</button>
+        <template x-if="showClearConfirm">
+            <div class="flex items-center gap-1.5 ml-1">
+                <span class="text-[11px] text-zinc-600">sure?</span>
+                <button @click="control('clear'); showClearConfirm = false" class="px-2 py-0.5 text-[11px] text-red-400 border border-red-500/30 rounded hover:bg-red-500/10">y</button>
+                <button @click="showClearConfirm = false" class="px-2 py-0.5 text-[11px] text-zinc-500 border border-zinc-800 rounded hover:text-zinc-300">n</button>
+            </div>
+        </template>
+    </div>
+
+    <div class="ml-auto flex items-center gap-3">
+        <div class="flex items-center gap-2 text-[11px] text-zinc-500">
+            <div class="w-1.5 h-1.5 rounded-full" :class="running ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-700'"></div>
+            <span x-text="leads.length + ' leads'"></span>
         </div>
-        <button @click="sidebarOpen = !sidebarOpen" x-show="!isMobile"
-            class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded text-xs text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100">
-            <svg class="w-4 h-4 shrink-0" :class="sidebarOpen ? '' : 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7M19 19l-7-7 7-7"/></svg>
-            <span x-show="sidebarOpen" x-cloak>Collapse</span>
+        <input type="text" x-model="search" placeholder="/" aria-label="Filter leads"
+            class="bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1 text-[11px] outline-none focus:border-zinc-600 w-24 sm:w-36 placeholder-zinc-700 text-zinc-300">
+        <button @click="showSettings = true" aria-label="Settings" class="p-1.5 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
     </div>
-</aside>
+</header>
 
-<div class="flex flex-col flex-1 overflow-hidden min-w-0">
+<!-- Main content -->
+<div class="flex flex-1 overflow-hidden min-h-0">
 
-    <div x-show="tab === 'dashboard'" x-cloak class="flex flex-col flex-1 overflow-hidden">
-        <div class="border-b border-zinc-200 dark:border-zinc-800 flex flex-wrap items-center gap-2 px-4 py-2 shrink-0">
-            <button @click="sidebarOpen = true" x-show="isMobile" aria-label="Open menu" class="p-1.5 rounded text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
-            </button>
-            <button @click="control('start')" x-show="!running"
-                class="px-3 py-1.5 text-xs font-medium bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded hover:opacity-80">Start</button>
-            <button @click="control('stop')" x-show="running" class="btn">Stop</button>
-            <button @click="exportCsv()" class="btn">Export</button>
-            <button @click="showClearConfirm = !showClearConfirm" class="btn">Clear</button>
-            <div x-show="showClearConfirm" x-cloak class="flex items-center gap-2">
-                <span class="text-xs text-zinc-500">Delete all?</span>
-                <button @click="control('clear'); showClearConfirm = false" class="px-2 py-1 text-xs font-medium text-red-600 border border-red-200 dark:border-red-800 rounded">Yes</button>
-                <button @click="showClearConfirm = false" class="px-2 py-1 text-xs text-zinc-500 border border-zinc-200 dark:border-zinc-700 rounded">No</button>
-            </div>
-            <input type="text" x-model="search" placeholder="Filter..." aria-label="Filter leads"
-                class="ml-auto bg-transparent border border-zinc-200 dark:border-zinc-800 rounded px-3 py-1.5 text-xs outline-none focus:border-zinc-400 dark:focus:border-zinc-600 w-28 sm:w-48 placeholder-zinc-400">
-        </div>
-
-        <div class="flex-1 overflow-auto min-h-0">
-            <table class="w-full text-xs border-collapse min-w-[600px]">
-                <thead class="sticky top-0 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800 z-10">
-                    <tr class="text-zinc-400 dark:text-zinc-600 uppercase text-[10px] tracking-wider">
-                        <th class="text-left px-4 py-2.5 font-medium">Company</th>
-                        <th class="text-left px-4 py-2.5 font-medium">Email</th>
-                        <th class="text-left px-4 py-2.5 font-medium">Phone</th>
-                        <th class="text-left px-4 py-2.5 font-medium">Category</th>
-                        <th class="text-left px-4 py-2.5 font-medium">Rating</th>
-                        <th class="text-right px-4 py-2.5 font-medium">Links</th>
+    <!-- Table -->
+    <div class="flex-1 overflow-auto min-w-0">
+        <table class="w-full text-[11px] border-collapse">
+            <thead class="sticky top-0 bg-zinc-950 border-b border-zinc-800 z-10">
+                <tr class="text-zinc-600 uppercase text-[10px] tracking-wider">
+                    <th class="text-left px-4 py-2 font-medium">Company</th>
+                    <th class="text-left px-4 py-2 font-medium">Email</th>
+                    <th class="text-left px-4 py-2 font-medium">Phone</th>
+                    <th class="text-left px-4 py-2 font-medium hidden lg:table-cell">Category</th>
+                    <th class="text-left px-4 py-2 font-medium hidden md:table-cell">Address</th>
+                    <th class="text-left px-4 py-2 font-medium">Rating</th>
+                    <th class="text-right px-4 py-2 font-medium">Links</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-zinc-900">
+                <template x-for="lead in filteredLeads" :key="lead['Maps URL']">
+                    <tr class="hover:bg-zinc-900/60 group">
+                        <td class="px-4 py-2 font-medium text-zinc-200 truncate max-w-[240px]" x-text="lead.Company"></td>
+                        <td class="px-4 py-2">
+                            <a x-show="lead.Email" :href="'mailto:' + lead.Email" class="text-zinc-400 hover:text-zinc-100 truncate block max-w-[200px]" x-text="lead.Email"></a>
+                            <span x-show="!lead.Email" class="text-zinc-800">—</span>
+                        </td>
+                        <td class="px-4 py-2 text-zinc-400 whitespace-nowrap" x-text="lead.Phone || '—'"></td>
+                        <td class="px-4 py-2 text-zinc-500 truncate max-w-[160px] hidden lg:table-cell" x-text="lead.Category || '—'"></td>
+                        <td class="px-4 py-2 text-zinc-600 truncate max-w-[200px] hidden md:table-cell" x-text="lead.Address || '—'"></td>
+                        <td class="px-4 py-2 whitespace-nowrap text-zinc-500">
+                            <span x-show="lead.Rating" x-text="lead.Rating + (lead.Reviews ? ' (' + lead.Reviews + ')' : '')"></span>
+                            <span x-show="!lead.Rating" class="text-zinc-800">—</span>
+                        </td>
+                        <td class="px-4 py-2 text-right whitespace-nowrap opacity-40 group-hover:opacity-100">
+                            <a :href="lead.Website" target="_blank" x-show="lead.Website" class="text-zinc-400 hover:text-zinc-100 mr-1.5">↗</a>
+                            <a :href="lead['Maps URL']" target="_blank" class="text-zinc-400 hover:text-zinc-100">◎</a>
+                        </td>
                     </tr>
-                </thead>
-                <tbody class="divide-y divide-zinc-100 dark:divide-zinc-900">
-                    <template x-for="lead in filteredLeads" :key="lead['Maps URL']">
-                        <tr class="hover:bg-zinc-50 dark:hover:bg-zinc-900/50">
-                            <td class="px-4 py-2.5">
-                                <div class="font-medium truncate max-w-[180px]" x-text="lead.Company"></div>
-                                <div class="text-zinc-400 text-[10px] truncate max-w-[180px]" x-text="lead.Address"></div>
-                            </td>
-                            <td class="px-4 py-2.5">
-                                <a x-show="lead.Email" :href="'mailto:' + lead.Email" class="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 truncate block max-w-[160px]" x-text="lead.Email"></a>
-                            </td>
-                            <td class="px-4 py-2.5 text-zinc-500 whitespace-nowrap" x-text="lead.Phone"></td>
-                            <td class="px-4 py-2.5 text-zinc-500 truncate max-w-[120px]" x-text="lead.Category"></td>
-                            <td class="px-4 py-2.5 whitespace-nowrap text-zinc-500">
-                                <span x-show="lead.Rating"><span x-text="lead.Rating"></span> <span class="text-zinc-400" x-text="lead.Reviews ? '(' + lead.Reviews + ')' : ''"></span></span>
-                            </td>
-                            <td class="px-4 py-2.5 text-right whitespace-nowrap">
-                                <a :href="lead.Website" target="_blank" x-show="lead.Website" aria-label="Website" class="inline-block text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 mr-2">↗</a>
-                                <a :href="lead['Maps URL']" target="_blank" x-show="lead['Maps URL']" aria-label="Maps" class="inline-block text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100">📍</a>
-                            </td>
-                        </tr>
-                    </template>
-                    <tr x-show="filteredLeads.length === 0">
-                        <td colspan="6" class="px-4 py-12 text-center text-zinc-400 text-xs"
-                            x-text="search ? 'No results match your filter.' : 'No leads yet. Start the scraper to begin.'"></td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-
-        <div :style="'height:' + logHeight + 'px'" class="border-t border-zinc-200 dark:border-zinc-800 shrink-0 flex flex-col" style="min-height:60px;max-height:70vh">
-            <div @mousedown="startResize($event)" @touchstart.passive="startResize($event)" class="h-1.5 cursor-ns-resize hover:bg-zinc-200 dark:hover:bg-zinc-800 shrink-0"></div>
-            <div class="px-4 py-1.5 border-b border-zinc-100 dark:border-zinc-900 flex items-center gap-2 shrink-0">
-                <div class="w-1.5 h-1.5 rounded-full" :class="running ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-300 dark:bg-zinc-700'"></div>
-                <span class="text-[10px] text-zinc-400 uppercase tracking-widest">Log</span>
-            </div>
-            <div x-ref="logs" class="flex-1 overflow-y-auto px-4 py-2 space-y-0.5">
-                <template x-for="line in logLines" :key="line">
-                    <div class="text-[11px] text-zinc-500 leading-5" x-text="line"></div>
                 </template>
-                <div x-show="logLines.length === 0" class="text-[11px] text-zinc-300 dark:text-zinc-700">No activity yet.</div>
-            </div>
+            </tbody>
+        </table>
+        <div x-show="filteredLeads.length === 0" class="px-4 py-12 text-center text-zinc-700 text-xs">
+            <span x-text="search ? 'No matches.' : 'No leads yet — configure settings and hit Start.'"></span>
         </div>
     </div>
 
-    <div x-show="tab === 'config'" x-cloak class="flex-1 overflow-y-auto">
-        <div class="p-4 sm:p-8 max-w-lg">
-            <h1 class="text-sm font-bold mb-6">Settings</h1>
-            <div class="space-y-5">
-                <div>
-                    <label for="cfg-terms" class="block text-[10px] uppercase tracking-wider text-zinc-400 mb-1.5">Search Terms</label>
-                    <input id="cfg-terms" type="text" x-model="config.search_terms" placeholder="e.g. Plumbers, Dentists" class="input">
-                    <p class="text-[10px] text-zinc-400 mt-1">Comma-separated list of business types.</p>
-                </div>
-                <div>
-                    <label for="cfg-locations" class="block text-[10px] uppercase tracking-wider text-zinc-400 mb-1.5">Locations</label>
-                    <input id="cfg-locations" type="text" x-model="config.locations" placeholder="e.g. New York, London" class="input">
-                    <p class="text-[10px] text-zinc-400 mt-1">Comma-separated list of cities or areas.</p>
-                </div>
-                <div>
-                    <label for="cfg-max" class="block text-[10px] uppercase tracking-wider text-zinc-400 mb-1.5">Max Results</label>
-                    <input id="cfg-max" type="number" x-model="config.max_results" placeholder="0" class="input">
-                    <p class="text-[10px] text-zinc-400 mt-1">Set to 0 for unlimited.</p>
-                </div>
-                <div class="flex items-center justify-between py-3 border-t border-b border-zinc-100 dark:border-zinc-900">
-                    <div>
-                        <p class="text-xs font-medium">Headless Mode</p>
-                        <p class="text-[10px] text-zinc-400 mt-0.5">Hide the browser window while scraping.</p>
-                    </div>
-                    <button @click="config.headless = !config.headless" role="switch" :aria-checked="config.headless"
-                        :class="config.headless ? 'bg-zinc-900 dark:bg-zinc-100' : 'bg-zinc-200 dark:bg-zinc-800'"
-                        class="w-10 h-5 rounded-full relative shrink-0">
-                        <div :class="config.headless ? 'translate-x-5' : 'translate-x-0.5'" class="w-4 h-4 bg-white rounded-full absolute top-0.5 transition-transform"></div>
-                    </button>
-                </div>
-                <button @click="saveConfig()" class="px-4 py-2 text-xs font-medium bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded hover:opacity-80">Save Settings</button>
-            </div>
+    <!-- Log panel (right side on desktop) -->
+    <div class="hidden md:flex flex-col border-l border-zinc-800 bg-zinc-950 shrink-0 relative" :style="'width:' + logWidth + 'px'">
+        <div @mousedown="startResizeLog($event)" class="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize hover:bg-zinc-700 z-10"></div>
+        <div class="px-3 py-2 border-b border-zinc-800/50 flex items-center gap-2 shrink-0">
+            <div class="w-1.5 h-1.5 rounded-full" :class="running ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-800'"></div>
+            <span class="text-[10px] text-zinc-600 uppercase tracking-widest">log</span>
+            <span class="ml-auto text-[10px] text-zinc-700" x-text="logLines.length + ' lines'"></span>
+        </div>
+        <div x-ref="logs" class="flex-1 overflow-y-auto px-3 py-2 space-y-px">
+            <template x-for="(line, i) in logLines" :key="i">
+                <div class="text-[11px] text-zinc-500 leading-5" x-text="line"></div>
+            </template>
+            <div x-show="logLines.length === 0" class="text-[11px] text-zinc-700">Waiting for activity...</div>
         </div>
     </div>
-
 </div>
 
-<div class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+<!-- Mobile log toggle -->
+<button @click="showMobileLog = !showMobileLog" class="md:hidden fixed bottom-4 right-4 z-40 w-9 h-9 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400 hover:text-zinc-200">
+    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h10"/></svg>
+</button>
+<div x-show="showMobileLog" x-cloak class="md:hidden fixed inset-x-0 bottom-0 z-30 h-1/2 bg-zinc-950 border-t border-zinc-800 flex flex-col">
+    <div class="px-4 py-2 border-b border-zinc-800/50 flex items-center justify-between shrink-0">
+        <span class="text-[10px] text-zinc-600 uppercase tracking-widest">log</span>
+        <button @click="showMobileLog = false" class="text-zinc-600 hover:text-zinc-300 text-xs">✕</button>
+    </div>
+    <div class="flex-1 overflow-y-auto px-4 py-2 space-y-px">
+        <template x-for="(line, i) in logLines" :key="'m'+i">
+            <div class="text-[11px] text-zinc-600 leading-5" x-text="line"></div>
+        </template>
+    </div>
+</div>
+
+<!-- Settings modal -->
+<div x-show="showSettings" x-cloak class="fixed inset-0 z-50 flex items-center justify-center">
+    <div @click="showSettings = false" class="absolute inset-0 bg-black/60"></div>
+    <div class="relative bg-zinc-900 border border-zinc-800 rounded-lg w-full max-w-md mx-4 p-6" @keydown.escape.window="showSettings = false">
+        <div class="flex items-center justify-between mb-5">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-zinc-300">Settings</h2>
+            <button @click="showSettings = false" class="text-zinc-600 hover:text-zinc-300 text-sm">✕</button>
+        </div>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Search Terms</label>
+                <input type="text" x-model="config.search_terms" placeholder="Plumbers, Dentists"
+                    class="w-full bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-500">
+            </div>
+            <div>
+                <label class="block text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Locations</label>
+                <input type="text" x-model="config.locations" placeholder="New York, London"
+                    class="w-full bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-500">
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Max Results</label>
+                    <input type="number" x-model="config.max_results" placeholder="0"
+                        class="w-full bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-500">
+                </div>
+                <div>
+                    <label class="block text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Concurrency</label>
+                    <input type="number" x-model="config.concurrency" placeholder="3"
+                        class="w-full bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-500">
+                </div>
+            </div>
+            <div class="flex items-center justify-between py-2">
+                <span class="text-[11px] text-zinc-400">Headless mode</span>
+                <button @click="config.headless = !config.headless" role="switch" :aria-checked="config.headless"
+                    :class="config.headless ? 'bg-emerald-500/20 border-emerald-500/30' : 'bg-zinc-800 border-zinc-700'"
+                    class="w-9 h-5 rounded-full relative border shrink-0">
+                    <div :class="config.headless ? 'translate-x-4 bg-emerald-400' : 'translate-x-0.5 bg-zinc-500'" class="w-4 h-4 rounded-full absolute top-0.5 transition-transform"></div>
+                </button>
+            </div>
+            <button @click="saveConfig(); showSettings = false" class="w-full py-2 text-[11px] font-medium bg-zinc-100 text-zinc-900 rounded hover:bg-white">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Toasts -->
+<div class="fixed bottom-4 left-4 z-50 flex flex-col gap-2 pointer-events-none">
     <template x-for="t in $store.toasts.list" :key="t.id">
         <div x-show="t.visible" x-transition
-            :class="t.type === 'error' ? 'border-red-200 dark:border-red-800 text-red-600' : 'border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300'"
-            class="pointer-events-auto px-4 py-3 rounded border text-xs font-medium shadow-sm bg-white dark:bg-zinc-900"
+            :class="t.type === 'error' ? 'border-red-500/30 text-red-400' : 'border-zinc-800 text-zinc-400'"
+            class="pointer-events-auto px-3 py-2 rounded border text-[11px] font-medium bg-zinc-900"
             x-text="t.msg"></div>
     </template>
 </div>
@@ -190,9 +189,9 @@
 <script>
 function app() {
     return {
-        tab: 'dashboard', running: false, leads: [], logLines: [], search: '',
-        showClearConfirm: false, sidebarOpen: false, isMobile: window.innerWidth < 768,
-        logHeight: 144, config: {}, _pollFails: 0,
+        running: false, leads: [], logLines: [], search: '', config: {},
+        showClearConfirm: false, showSettings: false, showMobileLog: false,
+        logWidth: 280, _pollFails: 0,
 
         init() {
             Alpine.store('toasts', {
@@ -203,11 +202,6 @@ function app() {
                     setTimeout(() => { t.visible = false; setTimeout(() => this.list.splice(this.list.indexOf(t), 1), 200); }, ms);
                 }
             });
-            window.addEventListener('resize', () => {
-                this.isMobile = window.innerWidth < 768;
-                if (!this.isMobile) this.sidebarOpen = true;
-            }, { passive: true });
-            if (!this.isMobile) this.sidebarOpen = true;
             this.poll().then(() => this._schedule());
         },
 
@@ -219,36 +213,35 @@ function app() {
         async poll() {
             try {
                 const d = await fetch('/api/status').then(r => r.json());
-                Object.assign(this, { running: d.running, leads: d.leads, logLines: d.logs, config: d.config });
+                Object.assign(this, { running: d.running, leads: d.leads, logLines: d.logs });
+                if (!this.showSettings) this.config = d.config;
                 this._pollFails = 0;
                 this.$nextTick(() => { const el = this.$refs.logs; if (el) el.scrollTop = el.scrollHeight; });
-            } catch { if (++this._pollFails === 3) Alpine.store('toasts').show('Connection lost. Retrying...', 'error'); }
+            } catch { if (++this._pollFails === 3) Alpine.store('toasts').show('Connection lost.', 'error'); }
         },
 
         async control(action) { await fetch(`/control/${action}`, { method: 'POST' }); await this.poll(); },
 
         async exportCsv() {
             const res = await fetch('/download');
-            if (!res.ok) { Alpine.store('toasts').show('No data to export yet.', 'error'); return; }
+            if (!res.ok) { Alpine.store('toasts').show('No data yet.', 'error'); return; }
             const a = document.createElement('a');
             a.href = URL.createObjectURL(await res.blob()); a.download = 'contacts.csv';
             a.click(); URL.revokeObjectURL(a.href);
-            Alpine.store('toasts').show('CSV downloaded.');
+            Alpine.store('toasts').show('Downloaded.');
         },
 
         async saveConfig() {
             await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.config) });
-            Alpine.store('toasts').show('Settings saved.');
+            Alpine.store('toasts').show('Saved.');
         },
 
-        startResize(e) {
-            const startY = e.touches?.[0]?.clientY ?? e.clientY, startH = this.logHeight;
-            const clamp = h => Math.max(60, Math.min(window.innerHeight * 0.7, h));
-            const getY = e => e.touches ? e.touches[0].clientY : e.clientY;
-            const onMove = e => this.logHeight = clamp(startH - (getY(e) - startY));
-            const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); window.removeEventListener('touchmove', onMove); window.removeEventListener('touchend', onUp); document.body.style.cursor = document.body.style.userSelect = ''; };
-            if (e.touches) { window.addEventListener('touchmove', onMove, { passive: true }); window.addEventListener('touchend', onUp); }
-            else { document.body.style.cursor = 'ns-resize'; document.body.style.userSelect = 'none'; window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp); }
+        startResizeLog(e) {
+            const startX = e.clientX, startW = this.logWidth;
+            const onMove = e => this.logWidth = Math.max(200, Math.min(600, startW - (e.clientX - startX)));
+            const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); document.body.style.cursor = document.body.style.userSelect = ''; };
+            document.body.style.cursor = 'ew-resize'; document.body.style.userSelect = 'none';
+            window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
         },
 
         get filteredLeads() {

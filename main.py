@@ -8,6 +8,7 @@ from collections import deque
 from pathlib import Path
 from urllib.parse import quote_plus
 
+import aiohttp
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -20,30 +21,21 @@ CFG_FILE = BASE_DIR / "config.json"
 
 DEFAULT_CFG = {
     "search_terms": "", "locations": "",
-    "headless": True, "max_results": 10, "concurrency": 3,
+    "headless": True, "max_results": 10, "concurrency": 5,
 }
 
 FIELDS = ["Company", "Email", "Phone", "Website", "Category", "Address", "Rating", "Reviews", "Maps URL"]
 EXCLUDED_DOMAINS = {"google.com", "facebook.com", "instagram.com"}
-EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
-PHONE_RE = re.compile(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
+EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}\b")
 CONSENT_SELECTORS = "button[aria-label*='Accept'], button[aria-label*='agree'], button[aria-label*='Αποδοχή']"
+CONTACT_PATHS = ("contact", "about", "contact-us", "kontakt", "epikoinonia")
 
 CHROMIUM_ARGS = [
-    "--disable-gpu",
-    "--disable-dev-shm-usage",
-    "--disable-extensions",
-    "--no-sandbox",
-    "--disable-background-networking",
-    "--disable-default-apps",
-    "--disable-sync",
-    "--disable-translate",
-    "--metrics-recording-only",
-    "--no-first-run",
-    "--single-process",
-    "--disable-backgrounding-occluded-windows",
-    "--disable-renderer-backgrounding",
-    "--disable-component-update",
+    "--disable-gpu", "--disable-dev-shm-usage", "--disable-extensions",
+    "--no-sandbox", "--disable-background-networking", "--disable-default-apps",
+    "--disable-sync", "--disable-translate", "--metrics-recording-only",
+    "--no-first-run", "--single-process", "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding", "--disable-component-update",
 ]
 
 
@@ -75,10 +67,11 @@ class Engine:
         self.active = False
         self._seen_urls: set[str] = set()
         self._lock = asyncio.Lock()
+        self._cache: list[dict] = []
+        self._cache_mtime: float = 0
         if DB_FILE.exists():
             with open(DB_FILE, encoding="utf-8") as f:
-                for r in csv.DictReader(f):
-                    self._seen_urls.add(r.get("Maps URL", ""))
+                self._seen_urls = {r.get("Maps URL", "") for r in csv.DictReader(f)}
 
     def _read_leads(self):
         if not DB_FILE.exists():
@@ -86,16 +79,26 @@ class Engine:
         with open(DB_FILE, encoding="utf-8") as f:
             return list(csv.DictReader(f))
 
-    def _append_and_save(self, rows: list[dict]):
+    def _read_leads_cached(self):
+        if not DB_FILE.exists():
+            self._cache, self._cache_mtime = [], 0
+            return []
+        mtime = DB_FILE.stat().st_mtime
+        if mtime != self._cache_mtime:
+            self._cache = self._read_leads()
+            self._cache_mtime = mtime
+        return self._cache
+
+    def _append(self, row: dict):
         exists = DB_FILE.exists()
         with open(DB_FILE, "a", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=FIELDS)
             if not exists:
                 w.writeheader()
-            w.writerows(rows)
+            w.writerow(row)
 
     def _rewrite(self, rows: list[dict]):
-        tmp = Path(f"{DB_FILE}.tmp")
+        tmp = DB_FILE.with_suffix(".tmp")
         with open(tmp, "w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=FIELDS)
             w.writeheader()
@@ -104,6 +107,12 @@ class Engine:
 
     async def run(self, cfg):
         self.active = True
+        try:
+            await self._run(cfg)
+        finally:
+            self.active = False
+
+    async def _run(self, cfg):
         log.info("Starting scraper...")
         queries = [
             f"{t.strip()} {loc.strip()}"
@@ -112,41 +121,41 @@ class Engine:
         ]
         if not queries:
             log.info("No search queries configured.")
-            self.active = False
             return
 
-        concurrency = min(int(cfg.get("concurrency", 3)), 3)
-
         async with async_playwright() as p:
-            browser = await p.chromium.launch(
-                headless=cfg["headless"],
-                args=CHROMIUM_ARGS,
-            )
+            browser = await p.chromium.launch(headless=cfg["headless"], args=CHROMIUM_ARGS)
             for q in queries:
                 if not self.active:
                     break
                 await self._scrape_maps(browser, q, int(cfg.get("max_results", 10)))
-
-            async with self._lock:
-                sites = [r for r in self._read_leads() if r.get("Website") and not r.get("Email")]
-            if sites and self.active:
-                log.info(f"Enriching {len(sites)} websites...")
-                ctx = await browser.new_context(java_script_enabled=False)
-                await ctx.route("**/*.{png,jpg,jpeg,gif,webp,svg,css,woff,woff2,mp4,webm}", lambda r: r.abort())
-                sem = asyncio.Semaphore(concurrency)
-                await asyncio.gather(*[self._scrape_site(ctx, r, sem) for r in sites])
-                await ctx.close()
-                async with self._lock:
-                    all_leads = self._read_leads()
-                    enriched = {r["Website"]: r for r in sites}
-                    for lead in all_leads:
-                        if lead.get("Website") in enriched:
-                            lead.update(enriched[lead["Website"]])
-                    self._rewrite(all_leads)
-
             await browser.close()
-        self.active = False
-        log.info("Job finished.")
+
+        if not self.active:
+            return
+
+        async with self._lock:
+            sites = [r for r in self._read_leads() if r.get("Website") and not r.get("Email")]
+        if not sites:
+            log.info("Done.")
+            return
+
+        log.info(f"Enriching {len(sites)} websites...")
+        sem = asyncio.Semaphore(min(int(cfg.get("concurrency", 5)), 10))
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=8),
+            headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"},
+        ) as session:
+            await asyncio.gather(*[self._enrich(session, res, sem) for res in sites])
+
+        async with self._lock:
+            all_leads = self._read_leads()
+            enriched = {r["Website"]: r for r in sites if r.get("Email")}
+            for lead in all_leads:
+                if lead.get("Website") in enriched:
+                    lead["Email"] = enriched[lead["Website"]]["Email"]
+            self._rewrite(all_leads)
+        log.info("Done.")
 
     async def _scrape_maps(self, browser, q, limit):
         async def text(sel):
@@ -181,11 +190,11 @@ class Engine:
                     if len(found) == last:
                         break
                     last = len(found)
-                    if limit > 0 and len(found) >= limit:
+                    if limit and len(found) >= limit:
                         break
                 links = await page.query_selector_all("a.hfpxzc")
                 urls = [href for link in links if (href := await link.get_attribute("href"))]
-                if limit > 0:
+                if limit:
                     urls = urls[:limit]
 
             log.info(f"Processing {len(urls)} listings...")
@@ -222,27 +231,29 @@ class Engine:
                         res["Website"] = href.split("?")[0].rstrip("/")
 
                 async with self._lock:
-                    self._append_and_save([res])
+                    self._append(res)
                 log.info(f"Captured: {res['Company']}")
         finally:
             await ctx.close()
 
-    async def _scrape_site(self, ctx, res, sem):
+    async def _enrich(self, session, res, sem):
         async with sem:
             if not self.active:
                 return
-            page = await ctx.new_page()
-            try:
-                await page.goto(res["Website"], timeout=15000)
-                html = await page.content()
-                if m := EMAIL_RE.search(html):
-                    res["Email"] = m.group(0).lower()
-                if not res["Phone"] and (m := PHONE_RE.search(html)):
-                    res["Phone"] = m.group(0)
-            except Exception as e:
-                log.debug(f"Failed enriching {res.get('Website')}: {e}")
-            finally:
-                await page.close()
+            base = res["Website"]
+            urls = [base] + [f"{base.rstrip('/')}/{p}" for p in CONTACT_PATHS]
+            for url in urls:
+                try:
+                    async with session.get(url, ssl=False, allow_redirects=True) as resp:
+                        if resp.status != 200:
+                            continue
+                        html = await resp.text(errors="ignore")
+                    if m := EMAIL_RE.search(html):
+                        res["Email"] = m.group(0).lower()
+                        break
+                except Exception:
+                    continue
+            log.info(f"Enriched: {res.get('Company', base)} {'✓' if res.get('Email') else '—'}")
 
 
 engine = Engine()
@@ -259,7 +270,7 @@ async def index(request: Request):
 @app.get("/api/status")
 async def status():
     async with engine._lock:
-        leads = engine._read_leads()
+        leads = engine._read_leads_cached()
     return {"running": engine.active, "leads": leads, "logs": list(log_handler.buffer), "config": load_config()}
 
 
@@ -274,6 +285,7 @@ async def control(action: str):
         async with engine._lock:
             engine._seen_urls.clear()
         DB_FILE.unlink(missing_ok=True)
+        log_handler.buffer.clear()
         log.info("Results cleared.")
     else:
         return JSONResponse({"error": f"Unknown action: {action}"}, status_code=400)
@@ -284,10 +296,10 @@ async def control(action: str):
 async def save_config(request: Request):
     cfg = await request.json()
     if not isinstance(cfg, dict):
-        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+        return JSONResponse({"error": "Invalid"}, status_code=400)
     cleaned = {k: cfg[k] for k in DEFAULT_CFG if k in cfg}
     if not cleaned:
-        return JSONResponse({"error": "No valid config keys provided"}, status_code=400)
+        return JSONResponse({"error": "Invalid"}, status_code=400)
     CFG_FILE.write_text(json.dumps(cleaned))
     return {"success": True}
 
