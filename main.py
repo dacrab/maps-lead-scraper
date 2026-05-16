@@ -73,20 +73,33 @@ logging.getLogger("uvicorn.access").setLevel(logging.ERROR)
 class Engine:
     def __init__(self):
         self.active = False
-        self.data: list[dict] = []
         self._seen_urls: set[str] = set()
         self._lock = asyncio.Lock()
         if DB_FILE.exists():
             with open(DB_FILE, encoding="utf-8") as f:
-                self.data = list(csv.DictReader(f))
-            self._seen_urls = {r.get("Maps URL", "") for r in self.data}
+                for r in csv.DictReader(f):
+                    self._seen_urls.add(r.get("Maps URL", ""))
 
-    def _save(self):
+    def _read_leads(self):
+        if not DB_FILE.exists():
+            return []
+        with open(DB_FILE, encoding="utf-8") as f:
+            return list(csv.DictReader(f))
+
+    def _append_and_save(self, rows: list[dict]):
+        exists = DB_FILE.exists()
+        with open(DB_FILE, "a", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=FIELDS)
+            if not exists:
+                w.writeheader()
+            w.writerows(rows)
+
+    def _rewrite(self, rows: list[dict]):
         tmp = Path(f"{DB_FILE}.tmp")
         with open(tmp, "w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=FIELDS)
             w.writeheader()
-            w.writerows(self.data)
+            w.writerows(rows)
         tmp.replace(DB_FILE)
 
     async def run(self, cfg):
@@ -115,13 +128,21 @@ class Engine:
                 await self._scrape_maps(browser, q, int(cfg.get("max_results", 10)))
 
             async with self._lock:
-                sites = [r for r in self.data if r.get("Website") and not r.get("Email")]
+                sites = [r for r in self._read_leads() if r.get("Website") and not r.get("Email")]
             if sites and self.active:
                 log.info(f"Enriching {len(sites)} websites...")
+                ctx = await browser.new_context(java_script_enabled=False)
+                await ctx.route("**/*.{png,jpg,jpeg,gif,webp,svg,css,woff,woff2,mp4,webm}", lambda r: r.abort())
                 sem = asyncio.Semaphore(concurrency)
-                await asyncio.gather(*[self._scrape_site(browser, r, sem) for r in sites])
+                await asyncio.gather(*[self._scrape_site(ctx, r, sem) for r in sites])
+                await ctx.close()
                 async with self._lock:
-                    self._save()
+                    all_leads = self._read_leads()
+                    enriched = {r["Website"]: r for r in sites}
+                    for lead in all_leads:
+                        if lead.get("Website") in enriched:
+                            lead.update(enriched[lead["Website"]])
+                    self._rewrite(all_leads)
 
             await browser.close()
         self.active = False
@@ -168,7 +189,6 @@ class Engine:
                     urls = urls[:limit]
 
             log.info(f"Processing {len(urls)} listings...")
-            changed = False
             for url in urls:
                 if not self.active:
                     break
@@ -202,23 +222,16 @@ class Engine:
                         res["Website"] = href.split("?")[0].rstrip("/")
 
                 async with self._lock:
-                    self.data.append(res)
-                changed = True
+                    self._append_and_save([res])
                 log.info(f"Captured: {res['Company']}")
-
-            if changed:
-                async with self._lock:
-                    self._save()
         finally:
             await ctx.close()
 
-    async def _scrape_site(self, browser, res, sem):
+    async def _scrape_site(self, ctx, res, sem):
         async with sem:
             if not self.active:
                 return
-            ctx = await browser.new_context()
             page = await ctx.new_page()
-            await ctx.route("**/*.{png,jpg,jpeg,gif,webp,svg,css,woff,woff2,mp4,webm}", lambda r: r.abort())
             try:
                 await page.goto(res["Website"], timeout=15000)
                 html = await page.content()
@@ -229,7 +242,7 @@ class Engine:
             except Exception as e:
                 log.debug(f"Failed enriching {res.get('Website')}: {e}")
             finally:
-                await ctx.close()
+                await page.close()
 
 
 engine = Engine()
@@ -246,7 +259,7 @@ async def index(request: Request):
 @app.get("/api/status")
 async def status():
     async with engine._lock:
-        leads = list(engine.data)
+        leads = engine._read_leads()
     return {"running": engine.active, "leads": leads, "logs": list(log_handler.buffer), "config": load_config()}
 
 
@@ -259,7 +272,6 @@ async def control(action: str):
         engine.active = False
     elif action == "clear":
         async with engine._lock:
-            engine.data = []
             engine._seen_urls.clear()
         DB_FILE.unlink(missing_ok=True)
         log.info("Results cleared.")
