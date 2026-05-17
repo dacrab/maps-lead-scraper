@@ -49,3 +49,12 @@ jobs:
           tags: maps-lead-scraper:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  auto-merge:
+    needs: [lint, docker]
+    permissions:
+      pull-requests: write
+      contents: write
+    uses: dacrab/.github-workflows/.github/workflows/dependabot-auto-merge.yml@v1
+    with:
+      target: minor
