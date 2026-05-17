@@ -1,10 +1,25 @@
 version: 2
 updates:
-  - package-ecosystem: pip
-    directory: /
-    schedule:
-      interval: weekly
-  - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: weekly
+- package-ecosystem: pip
+  directory: /
+  schedule:
+    interval: weekly
+  rebase-strategy: auto
+  commit-message:
+    prefix: chore
+    include: scope
+  cooldown:
+    default-days: 3
+    semver-minor-days: 7
+    semver-major-days: 14
+- package-ecosystem: github-actions
+  directory: /
+  schedule:
+    interval: weekly
+  rebase-strategy: auto
+  commit-message:
+    prefix: chore
+    include: scope
+  cooldown:
+    default-days: 3
+    semver-minor-days: 7
