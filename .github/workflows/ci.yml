@@ -52,9 +52,13 @@ jobs:
 
   auto-merge:
     needs: [lint, docker]
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       pull-requests: write
       contents: write
-    uses: dacrab/.github-workflows/.github/workflows/dependabot-auto-merge.yml@v1
-    with:
-      target: minor
+    steps:
+      - uses: fastify/github-action-merge-dependabot@59fc8817458fac20df8884576cfe69dbb77c9a07 # v3
+        with:
+          target: minor
