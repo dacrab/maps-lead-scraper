@@ -49,16 +49,3 @@ jobs:
           tags: maps-lead-scraper:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  auto-merge:
-    needs: [lint, docker]
-    if: github.event.pull_request.user.login == 'dependabot[bot]'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      pull-requests: write
-      contents: write
-    steps:
-      - uses: fastify/github-action-merge-dependabot@30c3f8f14a4f7b315ba38dbc1b793d27128fef82 # v3
-        with:
-          target: minor
