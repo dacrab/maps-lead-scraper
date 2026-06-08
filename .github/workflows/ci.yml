@@ -7,7 +7,7 @@ on:
     branches: [main, master]
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -51,4 +51,5 @@ jobs:
           tags: maps-lead-scraper:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
 
