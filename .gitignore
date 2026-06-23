@@ -18,6 +18,9 @@ venv/
 .cache/
 ms-playwright/
 
+# opencode
+opencode.json
+
 # IDE & System
 .vscode/
 .idea/
