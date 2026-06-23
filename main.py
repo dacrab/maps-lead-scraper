@@ -6,14 +6,12 @@ import os
 import re
 from collections import deque
 from pathlib import Path
-from urllib.parse import quote_plus
 
 import aiohttp
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from playwright.async_api import async_playwright
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_FILE = BASE_DIR / "contacts.csv"
@@ -21,22 +19,13 @@ CFG_FILE = BASE_DIR / "config.json"
 
 DEFAULT_CFG = {
     "search_terms": "", "locations": "",
-    "headless": True, "max_results": 10, "concurrency": 5,
+    "api_key": "", "max_results": 20, "concurrency": 5,
 }
 
 FIELDS = ["Company", "Email", "Phone", "Website", "Category", "Address", "Rating", "Reviews", "Maps URL"]
 EXCLUDED_DOMAINS = {"google.com", "facebook.com", "instagram.com"}
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}\b")
-CONSENT_SELECTORS = "button[aria-label*='Accept'], button[aria-label*='agree'], button[aria-label*='Αποδοχή']"
 CONTACT_PATHS = ("contact", "about", "contact-us", "kontakt", "epikoinonia")
-
-CHROMIUM_ARGS = [
-    "--disable-gpu", "--disable-dev-shm-usage", "--disable-extensions",
-    "--no-sandbox", "--disable-background-networking", "--disable-default-apps",
-    "--disable-sync", "--disable-translate", "--metrics-recording-only",
-    "--no-first-run", "--single-process", "--disable-backgrounding-occluded-windows",
-    "--disable-renderer-backgrounding", "--disable-component-update",
-]
 
 
 def load_config():
@@ -114,6 +103,11 @@ class Engine:
 
     async def _run(self, cfg):
         log.info("Starting scraper...")
+        api_key = os.environ.get("PLACES_API_KEY") or cfg.get("api_key", "").strip()
+        if not api_key:
+            log.info("No Google Places API key configured. Set PLACES_API_KEY env var or add api_key to config.")
+            return
+
         queries = [
             f"{t.strip()} {loc.strip()}"
             for t in cfg["search_terms"].split(",") if t.strip()
@@ -123,13 +117,12 @@ class Engine:
             log.info("No search queries configured.")
             return
 
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=cfg["headless"], args=CHROMIUM_ARGS)
+        limit = int(cfg.get("max_results", 20))
+        async with aiohttp.ClientSession() as session:
             for q in queries:
                 if not self.active:
                     break
-                await self._scrape_maps(browser, q, int(cfg.get("max_results", 10)))
-            await browser.close()
+                await self._search_places(session, api_key, q, limit)
 
         if not self.active:
             return
@@ -157,84 +150,79 @@ class Engine:
             self._rewrite(all_leads)
         log.info("Done.")
 
-    async def _scrape_maps(self, browser, q, limit):
-        async def text(sel):
-            try:
-                return (await page.inner_text(sel, timeout=3000)).strip()
-            except Exception:
-                return ""
+    async def _search_places(self, session, api_key, q, limit):
+        base_url = "https://places.googleapis.com/v1/places:searchText"
+        headers = {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": api_key,
+            "X-Goog-FieldMask": "places.id,places.displayName,places.primaryType,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.rating,places.userRatingCount,places.googleMapsUri,nextPageToken",
+        }
 
-        ctx = await browser.new_context(viewport={"width": 1200, "height": 800})
-        page = await ctx.new_page()
-        try:
-            log.info(f"Searching: {q}")
+        page_token = None
+        count = 0
+
+        while self.active:
+            if limit and count >= limit:
+                break
+
+            body = {"textQuery": q, "pageSize": min(20, limit - count) if limit else 20}
+            if page_token:
+                body["pageToken"] = page_token
+
             try:
-                await page.goto(f"https://www.google.com/maps/search/{quote_plus(q)}", wait_until="domcontentloaded")
+                async with session.post(base_url, json=body, headers=headers) as resp:
+                    if resp.status == 403:
+                        log.warning("Invalid API key or Places API not enabled.")
+                        return
+                    if resp.status == 429:
+                        log.warning("Rate limited. Try again later.")
+                        return
+                    if resp.status != 200:
+                        log.warning(f"Places API error {resp.status}")
+                        return
+                    data = await resp.json()
             except Exception as e:
-                log.warning(f"Failed to load Maps for '{q}': {e}")
+                log.warning(f"Places API request failed: {e}")
                 return
 
-            try:
-                await page.locator(CONSENT_SELECTORS).first.click(timeout=3000)
-            except Exception:
-                pass
+            places = data.get("places", [])
+            if not places:
+                break
 
-            if "/maps/place/" in page.url:
-                urls = [page.url]
-            else:
-                last = 0
-                for _ in range(20):
-                    await page.mouse.wheel(0, 4000)
-                    await asyncio.sleep(1.5)
-                    found = await page.query_selector_all("a.hfpxzc")
-                    if len(found) == last:
-                        break
-                    last = len(found)
-                    if limit and len(found) >= limit:
-                        break
-                links = await page.query_selector_all("a.hfpxzc")
-                urls = [href for link in links if (href := await link.get_attribute("href"))]
-                if limit:
-                    urls = urls[:limit]
-
-            log.info(f"Processing {len(urls)} listings...")
-            for url in urls:
+            page_info = "initial" if not page_token else "next"
+            log.info(f"Searching: {q} ({page_info} page, {len(places)} results)")
+            for place in places:
                 if not self.active:
+                    return
+                if limit and count >= limit:
                     break
-                async with self._lock:
-                    if url in self._seen_urls:
-                        continue
-                    self._seen_urls.add(url)
 
-                try:
-                    await page.goto(url, wait_until="domcontentloaded")
-                    await page.wait_for_selector("h1.DUwDvf", timeout=5000)
-                except Exception as e:
-                    log.warning(f"Failed to load listing: {e}")
-                    continue
+                maps_url = (place.get("googleMapsUri") or "").rstrip("/")
+                async with self._lock:
+                    if maps_url in self._seen_urls:
+                        continue
+                    self._seen_urls.add(maps_url)
 
                 res = {
-                    "Company": await text("h1.DUwDvf"),
-                    "Category": await text("button.DkEaL"),
-                    "Address": await text("button[data-item-id='address']"),
-                    "Phone": await text("button[data-item-id*='phone:tel:']"),
-                    "Website": "",
+                    "Company": (place.get("displayName") or {}).get("text", ""),
+                    "Category": place.get("primaryType", ""),
+                    "Address": place.get("formattedAddress", ""),
+                    "Phone": place.get("nationalPhoneNumber", ""),
+                    "Website": (place.get("websiteUri") or "").rstrip("/"),
                     "Email": "",
-                    "Rating": await text("div.F7nice span span[aria-hidden='true']"),
-                    "Reviews": (await text("div.F7nice span[aria-label*='reviews']")).strip("()"),
-                    "Maps URL": url,
+                    "Rating": str(place.get("rating", "")),
+                    "Reviews": str(place.get("userRatingCount", "")),
+                    "Maps URL": maps_url,
                 }
 
-                wb = await page.query_selector("a[data-item-id='authority']")
-                if wb and (href := await wb.get_attribute("href")):
-                    if not any(d in href.lower() for d in EXCLUDED_DOMAINS):
-                        res["Website"] = href.split("?")[0].rstrip("/")
-
+                count += 1
                 async with self._lock:
                     self._append(res)
                 log.info(f"Captured: {res['Company']}")
-        finally:
-            await ctx.close()
+
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                break
 
     async def _enrich(self, session, res, sem):
         async with sem:
