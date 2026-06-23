@@ -163,14 +163,6 @@
                         class="w-full bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-500">
                 </div>
             </div>
-            <div class="flex items-center justify-between py-2">
-                <span class="text-[11px] text-zinc-400">Headless mode</span>
-                <button @click="config.headless = !config.headless" role="switch" :aria-checked="config.headless"
-                    :class="config.headless ? 'bg-emerald-500/20 border-emerald-500/30' : 'bg-zinc-800 border-zinc-700'"
-                    class="w-9 h-5 rounded-full relative border shrink-0">
-                    <div :class="config.headless ? 'translate-x-4 bg-emerald-400' : 'translate-x-0.5 bg-zinc-500'" class="w-4 h-4 rounded-full absolute top-0.5 transition-transform"></div>
-                </button>
-            </div>
             <button @click="saveConfig(); showSettings = false" class="w-full py-2 text-[11px] font-medium bg-zinc-100 text-zinc-900 rounded hover:bg-white">Save</button>
         </div>
     </div>
