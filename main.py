@@ -5,6 +5,7 @@ import logging
 import os
 import re
 from collections import deque
+from http import HTTPStatus
 from pathlib import Path
 
 import aiohttp
@@ -12,7 +13,6 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from http import HTTPStatus
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_FILE = BASE_DIR / "contacts.csv"
