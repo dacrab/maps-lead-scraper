@@ -5,8 +5,11 @@ import logging
 import os
 import re
 from collections import deque
+from contextlib import asynccontextmanager
 from http import HTTPStatus
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from typing import TypedDict
 
 import aiohttp
 from fastapi import FastAPI, Request
@@ -15,7 +18,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_FILE = BASE_DIR / "contacts.csv"
+STATE_DIR = BASE_DIR / "data"
+STATE_DIR.mkdir(exist_ok=True)
+DB_FILE = STATE_DIR / "contacts.csv"
 CFG_FILE = BASE_DIR / "config.json"
 
 PLACES_API_URL = "https://places.googleapis.com/v1/places:searchText"
@@ -33,15 +38,40 @@ FIELDS = [
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}\b")
 CONTACT_PATHS = ("contact", "about", "contact-us", "kontakt", "epikoinonia")
 
+Lead = TypedDict(
+    "Lead",
+    {
+        "Company": str, "Email": str, "Phone": str, "Website": str,
+        "Category": str, "Address": str, "Rating": str, "Reviews": str,
+        "Maps URL": str,
+    },
+    total=False,
+)
 
-def load_config():
-    if CFG_FILE.exists():
-        return json.loads(CFG_FILE.read_text())
-    return dict(DEFAULT_CFG)
+Config = TypedDict(
+    "Config",
+    {
+        "search_terms": str, "locations": str, "api_key": str,
+        "max_results": int, "concurrency": int,
+    },
+    total=False,
+)
 
 
-def _sanitize_cfg(cfg: dict) -> dict | None:
-    cleaned: dict = {}
+def load_config() -> Config:
+    if not CFG_FILE.exists():
+        return dict(DEFAULT_CFG)
+    try:
+        cfg = json.loads(CFG_FILE.read_text())
+    except (json.JSONDecodeError, OSError):
+        return dict(DEFAULT_CFG)
+    if not isinstance(cfg, dict):
+        return dict(DEFAULT_CFG)
+    return {**DEFAULT_CFG, **cfg}
+
+
+def _sanitize_cfg(cfg: dict) -> Config | None:
+    cleaned: dict = dict(DEFAULT_CFG)
     for key in DEFAULT_CFG:
         if key not in cfg:
             continue
@@ -58,7 +88,7 @@ def _sanitize_cfg(cfg: dict) -> dict | None:
         elif not isinstance(value, str):
             return None
         cleaned[key] = value
-    return cleaned or None
+    return cleaned
 
 
 class MemoryHandler(logging.Handler):
@@ -75,8 +105,14 @@ log = logging.getLogger("scraper")
 log.setLevel(logging.INFO)
 if not any(isinstance(h, MemoryHandler) for h in log.handlers):
     log.addHandler(log_handler)
-if not any(isinstance(h, logging.FileHandler) for h in log.handlers):
-    log.addHandler(logging.FileHandler(BASE_DIR / "scraper.log"))
+if not any(isinstance(h, RotatingFileHandler) for h in log.handlers):
+    log.addHandler(
+        RotatingFileHandler(
+            STATE_DIR / "scraper.log",
+            maxBytes=1_000_000,
+            backupCount=3,
+        )
+    )
 logging.getLogger("uvicorn.access").setLevel(logging.ERROR)
 
 
@@ -115,21 +151,23 @@ async def _fetch_page(session, api_key, body):
 class Engine:
     def __init__(self):
         self.active = False
+        self._task: asyncio.Task | None = None
         self._seen_urls: set[str] = set()
         self._lock = asyncio.Lock()
-        self._cache: list[dict] = []
+        self._cache: list[Lead] = []
         self._cache_mtime: float = 0
+        self._pending: list[Lead] = []
         if DB_FILE.exists():
             with open(DB_FILE, encoding="utf-8") as f:
                 self._seen_urls = {r.get("Maps URL", "") for r in csv.DictReader(f)}
 
-    def _read_leads(self):
+    def _read_leads(self) -> list[Lead]:
         if not DB_FILE.exists():
             return []
         with open(DB_FILE, encoding="utf-8") as f:
             return list(csv.DictReader(f))
 
-    def _read_leads_cached(self):
+    def _read_leads_cached(self) -> list[Lead]:
         if not DB_FILE.exists():
             self._cache, self._cache_mtime = [], 0
             return []
@@ -139,21 +177,43 @@ class Engine:
             self._cache_mtime = mtime
         return self._cache
 
-    def _append(self, row: dict):
+    def _append(self, row: Lead, batch: int = 50):
+        self._pending.append(row)
+        if len(self._pending) >= batch:
+            self._flush_pending()
+
+    def _flush_pending(self):
+        if not self._pending:
+            return
         exists = DB_FILE.exists()
         with open(DB_FILE, "a", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=FIELDS)
             if not exists:
                 w.writeheader()
-            w.writerow(row)
+            w.writerows(self._pending)
+        self._pending.clear()
 
-    def _rewrite(self, rows: list[dict]):
+    def _rewrite(self, rows: list[Lead]):
         tmp = DB_FILE.with_suffix(".tmp")
         with open(tmp, "w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=FIELDS)
             w.writeheader()
             w.writerows(rows)
         tmp.replace(DB_FILE)
+
+    def _done(self, task):
+        if self._task is task:
+            self._task = None
+        if task.cancelled():
+            return
+        if exc := task.exception():
+            log.error(f"Scraper crashed: {exc}")
+
+    async def stop(self):
+        self.active = False
+        if self._task and not self._task.done():
+            self._task.cancel()
+            await asyncio.gather(self._task, return_exceptions=True)
 
     async def run(self, cfg):
         self.active = True
@@ -188,12 +248,12 @@ class Engine:
                     break
                 await self._search_places(session, api_key, q, limit)
 
-        if not self.active:
-            return
-
         async with self._lock:
+            self._flush_pending()
+            if not self.active:
+                return
             sites = [
-                r for r in self._read_leads_cached()
+                dict(r) for r in self._read_leads_cached()
                 if r.get("Website") and not r.get("Email")
             ]
         if not sites:
@@ -221,6 +281,7 @@ class Engine:
                 )
 
         async with self._lock:
+            self._flush_pending()
             all_leads = self._read_leads_cached()
             emails = {
                 r["Website"]: r.get("Email")
@@ -302,7 +363,7 @@ class Engine:
             for url in urls:
                 try:
                     async with session.get(
-                        url, ssl=False, allow_redirects=True
+                        url, allow_redirects=True
                     ) as resp:
                         if resp.status != HTTPStatus.OK:
                             continue
@@ -320,7 +381,15 @@ class Engine:
 
 
 engine = Engine()
-app = FastAPI()
+
+
+@asynccontextmanager
+async def lifespan(app):
+    yield
+    await engine.stop()
+
+
+app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
@@ -344,18 +413,19 @@ async def status():
 
 @app.post("/control/{action}")
 async def control(action: str):
-    if action == "start" and not engine.active:
-        task = asyncio.create_task(engine.run(load_config()))
-        task.add_done_callback(
-            lambda t: log.error(f"Scraper crashed: {t.exception()}")
-            if t.exception()
-            else None
-        )
+    if action == "start" and not engine.active and (
+        engine._task is None or engine._task.done()
+    ):
+        engine._task = asyncio.create_task(engine.run(load_config()))
+        engine._task.add_done_callback(engine._done)
     elif action == "stop":
         engine.active = False
     elif action == "clear":
         async with engine._lock:
             engine._seen_urls.clear()
+            engine._cache = []
+            engine._cache_mtime = 0
+            engine._pending.clear()
         DB_FILE.unlink(missing_ok=True)
         log_handler.buffer.clear()
         log.info("Results cleared.")
