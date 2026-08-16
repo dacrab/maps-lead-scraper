@@ -1,4 +1,5 @@
 # Data & Config
+data/
 contacts.csv
 contacts.csv.tmp
 config.json
