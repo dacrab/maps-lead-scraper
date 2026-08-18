@@ -224,7 +224,7 @@ class Engine:
 
     async def _run(self, cfg):
         log.info("Starting scraper...")
-        api_key = os.environ.get("PLACES_API_KEY") or cfg.get("api_key", "").strip()
+        api_key = os.environ.get("PLACES_API_KEY") or cfg["api_key"].strip()
         if not api_key:
             log.info(
                 "No Google Places API key configured. "
@@ -241,7 +241,7 @@ class Engine:
             log.info("No search queries configured.")
             return
 
-        limit = int(cfg.get("max_results", 20))
+        limit = int(cfg["max_results"])
         async with aiohttp.ClientSession() as session:
             for q in queries:
                 if not self.active:
@@ -261,7 +261,7 @@ class Engine:
             return
 
         log.info(f"Enriching {len(sites)} websites...")
-        sem = asyncio.Semaphore(min(int(cfg.get("concurrency", 5)), 10))
+        sem = asyncio.Semaphore(min(int(cfg["concurrency"]), 10))
         timeout = aiohttp.ClientTimeout(total=8)
         headers = {
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
