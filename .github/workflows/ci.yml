@@ -27,12 +27,10 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt ruff==0.16.10
 
-      - name: Lint with ruff
-        run: |
-          pip install ruff
-          ruff check .
+      - name: Lint
+        run: ruff check .
 
   docker:
     runs-on: ubuntu-latest
