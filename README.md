@@ -1,23 +1,23 @@
 # Maps Lead Scraper
 
-Find local businesses on Google Maps and pull contact emails from their websites.
+Point it at a business category and a city, and it brings back companies plus the emails published on their websites.
 
 **Live demo:** https://email-scraper-9svf.onrender.com
 
-Type in a business category and a city, and the scraper searches Google Maps for matching companies. It then visits each company's website to look for a contact email, and collects everything into one table. Export the list as a CSV when you're done.
+The dashboard runs the search, shows leads as they arrive, and lets you filter the list before exporting a CSV.
 
-## Features
+## What it does
 
-- Search any business type in any city or region
-- Pages through Maps results to find more than the first few
-- Checks each company's homepage, contact page, and about page for emails
-- Live results table with search and CSV export
-- Adjustable result limits and request concurrency
-- Skips businesses it has already seen, so reruns stay tidy
+- Searches Google Maps through the Places API, no browser automation
+- Works through several pages of results per query
+- Visits each company's homepage, contact page, and about page looking for an address
+- Keeps a live log and a searchable table
+- Remembers companies it has already found, so a rerun doesn't repeat them
+- Lets you tune the result cap and how many requests run at once
 
-## Run it locally
+## Running the scraper
 
-You'll need Python 3.12 or newer and a Google Places API key with the **Places API (New)** enabled.
+Python 3.12 or newer, plus a Google Places API key with the **Places API (New)** enabled.
 
 ```bash
 git clone https://github.com/dacrab/maps-lead-scraper.git
@@ -27,19 +27,13 @@ export PLACES_API_KEY=your_key_here
 python3 main.py
 ```
 
-Open <http://localhost:8000>, click the gear icon to set your search terms and locations, then press **Start**.
+Visit <http://localhost:8000>, open the gear menu, enter your search terms and locations, and hit **Start**.
 
-## Good to know
+## Keep in mind
 
-- Searches use your own Google Places key, so they count against your Google Cloud usage.
-- Email discovery only finds addresses a business has published on its site.
-- Leads are saved to `data/contacts.csv` and settings to `config.json` on the machine running the app.
-- Check your local rules on cold outreach before you use a list.
+- The key is yours, so searches draw on your Google Cloud quota.
+- Many businesses don't publish an email; the scraper can only find what's public.
+- Results land in `data/contacts.csv`, settings in `config.json`.
+- Cold-outreach rules vary by country — check yours first.
 
-## Built with
-
-Python, FastAPI, and aiohttp, with a small dashboard served by the same app.
-
-## License
-
-MIT
+MIT licensed — see [LICENSE](LICENSE).
