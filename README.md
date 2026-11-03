@@ -1,64 +1,39 @@
 # Maps Lead Scraper
 
-Scrape business leads from Google Maps (via the Places API) and extract emails from their websites.
+Point it at a business category and a city, and it brings back companies plus the emails published on their websites.
 
-![Python](https://img.shields.io/badge/python-3.12+-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
+**Live demo:** https://email-scraper-9svf.onrender.com
 
-## Features
+The dashboard runs the search, shows leads as they arrive, and lets you filter the list before exporting a CSV.
 
-- Searches Google Maps via the **Places API (New)** — no browser needed, pure HTTP
-- Paginates through results to discover more businesses beyond the top rankings
-- Enriches listings via fast HTTP requests — checks homepage + `/contact`, `/about` subpages for emails
-- Real-time terminal-style dashboard with log panel, filtering, and CSV export
+## What it does
 
-## Stack
+- Searches Google Maps through the Places API, no browser automation
+- Works through several pages of results per query
+- Visits each company's homepage, contact page, and about page looking for an address
+- Keeps a live log and a searchable table
+- Remembers companies it has already found, so a rerun doesn't repeat them
+- Lets you tune the result cap and how many requests run at once
 
-- **FastAPI + uvicorn** — async web server
-- **Google Places API (New)** — Text Search for business discovery
-- **aiohttp** — fast async HTTP for API calls and email enrichment
-- **Tailwind CSS + Alpine.js** — frontend, no build step
+## Running the scraper
 
-## Installation
+Python 3.12 or newer, plus a Google Places API key with the **Places API (New)** enabled.
 
 ```bash
 git clone https://github.com/dacrab/maps-lead-scraper.git
 cd maps-lead-scraper
 pip install -r requirements.txt
-```
-
-## Usage
-
-Requires a [Google Places API key](https://console.cloud.google.com/apis/credentials) with the **Places API (New)** enabled.
-
-```bash
 export PLACES_API_KEY=your_key_here
 python3 main.py
 ```
 
-Or set the key via a `.env` file or Render secret. Open `http://localhost:8000`, click the ⚙ gear icon to configure search terms and locations, then hit **Start**.
+Visit <http://localhost:8000>, open the gear menu, enter your search terms and locations, and hit **Start**.
 
-## Configuration
+## Keep in mind
 
-| Setting | Description |
-| :--- | :--- |
-| **Search Terms** | Comma-separated business types, e.g. `Plumbers, Dentists` |
-| **Locations** | Comma-separated cities or areas, e.g. `New York, London` |
-| **Max Results** | Per-query limit. `0` = unlimited |
-| **Concurrency** | Parallel HTTP requests for email enrichment |
-| **PLACES_API_KEY** | Set via environment variable or Render secret |
+- The key is yours, so searches draw on your Google Cloud quota.
+- Many businesses don't publish an email; the scraper can only find what's public.
+- Results land in `data/contacts.csv`, settings in `config.json`.
+- Cold-outreach rules vary by country — check yours first.
 
-## Project Structure
-
-```
-main.py           # Scraper + FastAPI server
-templates/
-└── index.html    # Dashboard SPA
-static/           # Logo, favicon
-contacts.csv      # Auto-saved leads
-config.json       # Auto-saved settings
-```
-
-## License
-
-MIT
+MIT licensed — see [LICENSE](LICENSE).
